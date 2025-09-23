@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".ClinicLoginActivity"
+    android:gravity="center"
+    android:background="@drawable/bg_gradient">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:layout_marginStart="200dp"
+        android:layout_marginEnd="200dp"
+        android:orientation="vertical"
+        android:background="@drawable/login_bg">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="90dp"
+            android:gravity="center">
+
+            <Button
+                android:id="@+id/btn_drlogin"
+                android:layout_width="180dp"
+                android:layout_height="50dp"
+                android:background="@drawable/buttonbgsave"
+                android:text="Doctor Login"
+                android:gravity="center"
+                android:textAllCaps="false"
+                android:textColor="@color/white"
+                android:textSize="18dp" />
+            <Button
+                android:id="@+id/btn_cliniclogin"
+                android:layout_width="180dp"
+                android:layout_height="50dp"
+                android:background="@drawable/buttonbgsave"
+                android:layout_marginLeft="30dp"
+                android:text="Clinic Login"
+                android:gravity="center"
+                android:textAllCaps="false"
+                android:textColor="@color/white"
+                android:textSize="18dp" />
+
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="90dp"
+            android:gravity="center"
+            android:visibility="visible">
+
+            <Button
+                android:id="@+id/btn_pharmacylogin"
+                android:layout_width="180dp"
+                android:layout_height="50dp"
+                android:background="@drawable/buttonbgsave"
+                android:text="Pharmacy Login"
+                android:gravity="center"
+                android:textAllCaps="false"
+                android:textColor="@color/white"
+                android:textSize="18dp" />
+            <Button
+                android:id="@+id/btn_lablogin"
+                android:layout_width="180dp"
+                android:layout_height="50dp"
+                android:background="@drawable/buttonbgsave"
+                android:layout_marginLeft="30dp"
+                android:text="Lab Login"
+                android:gravity="center"
+                android:textAllCaps="false"
+                android:textColor="@color/white"
+                android:textSize="18dp" />
+
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+
+</LinearLayout>

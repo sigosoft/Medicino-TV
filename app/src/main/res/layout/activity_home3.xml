@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/white"
+    android:orientation="vertical"
+    android:weightSum="5"
+    tools:context=".home.HomeActivity">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="4.7"
+        android:orientation="horizontal"
+        android:background="@color/white"
+        android:weightSum="5">
+
+        <LinearLayout
+            android:id="@+id/lin_dr"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1.33"
+            android:orientation="vertical"
+            android:weightSum="3">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rv_doctors"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:descendantFocusability="afterDescendants"
+                android:visibility="gone" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rv_counters"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:descendantFocusability="afterDescendants"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/btn_settings"
+                android:layout_width="180dp"
+                android:layout_height="50dp"
+                android:layout_gravity="center"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/buttonbgsave"
+                android:gravity="center"
+                android:text="Settings"
+                android:textAllCaps="false"
+                android:textColor="@color/white"
+                android:textSize="18dp"
+                android:visibility="visible" />
+
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="3.7"
+            android:orientation="vertical"
+            android:weightSum="5">
+            <!--            <ImageView-->
+            <!--                android:layout_width="match_parent"-->
+            <!--                android:layout_height="wrap_content"-->
+            <!--                android:src="@drawable/homebg"-->
+            <!--                android:scaleType="fitXY">-->
+            <!--            </ImageView>-->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="4"
+                android:orientation="vertical"
+                android:scaleType="fitXY">
+
+                <VideoView
+                    android:id="@+id/videoView_ID"
+                    android:layout_width="fill_parent"
+                    android:layout_height="fill_parent"
+                    android:visibility="gone" />
+
+                <com.google.android.exoplayer2.ui.PlayerView
+                    android:id="@+id/playerView"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    app:use_controller="false" />
+
+                <LinearLayout
+                    android:id="@+id/lin_video"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@color/medicino_color"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_centerHorizontal="true"
+                        android:contentDescription="@string/app_name"
+                        android:src="@drawable/medicinologo" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:background="#191b40"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <com.smarteist.autoimageslider.SliderView
+                    android:id="@+id/slider"
+                    android:layout_width="match_parent"
+                    android:layout_height="150dp"
+                    android:layout_centerInParent="true"
+                    android:visibility="gone"
+                    app:sliderAnimationDuration="600"
+                    app:sliderAutoCycleDirection="back_and_forth"
+                    app:sliderIndicatorAnimationDuration="600"
+                    app:sliderIndicatorEnabled="true"
+                    app:sliderIndicatorGravity="center_horizontal|bottom"
+                    app:sliderIndicatorMargin="15dp"
+                    app:sliderIndicatorOrientation="horizontal"
+                    app:sliderIndicatorPadding="3dp"
+                    app:sliderIndicatorRadius="2dp"
+                    app:sliderIndicatorSelectedColor="#5A5A5A"
+                    app:sliderIndicatorUnselectedColor="#FFF"
+                    app:sliderScrollTimeInSec="1" />
+
+                <!--  <ImageView
+                          android:id="@+id/img_scrolling"
+                          android:layout_width="match_parent"
+                          android:layout_height="match_parent"
+                          android:layout_centerHorizontal="true"
+                          android:src="@drawable/medicinologo"
+                          android:contentDescription="@string/app_name" />-->
+
+
+                <!-- <com.medicinoclinic.utils.ScrollTextView
+                         android:id="@+id/scrollingtitle"
+                         android:layout_width="match_parent"
+                         android:layout_height="match_parent"
+                         android:layout_marginTop="5dp"
+                         android:layout_weight="1.8"
+                         android:fontFamily="@font/manjari"
+                         android:gravity="center_vertical"
+                         android:marqueeRepeatLimit="marquee_forever"
+                         android:scrollHorizontally="true"
+                         android:singleLine="true"
+                         android:text=""
+                         android:textColor="@color/white"
+                         android:textFontWeight="900"
+                         android:textSize="55dp" />-->
+
+            </LinearLayout>
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="0.3"
+        android:background="@color/red"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+
+        <com.medicinoclinic.utils.ScrollTextView
+            android:id="@+id/scrollingtext"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:marqueeRepeatLimit="marquee_forever"
+            android:scrollHorizontally="true"
+            android:singleLine="true"
+            android:text=""
+            android:textColor="@color/white"
+            android:textSize="23dp"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+
+</LinearLayout>
