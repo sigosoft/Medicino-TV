@@ -128,6 +128,7 @@ class DoctorLoginActivity : AppCompatActivity() {
                     jsonObject = JSONObject(response.body()!!.string())
                     val message: String = jsonObject.getString("message")
                     val data: JSONObject = jsonObject.getJSONObject("data")
+                    baseClass.setSharedPreferance(applicationContext,"doctor_id",data.getInt("doctor_id").toString())
                     baseClass.setSharedPreferance(applicationContext,"token",data.getString("token"))
                     baseClass.setSharedPreferance(applicationContext,"type","2")
                     baseClass.setSharedPreferance(applicationContext,"drUsername",userName)

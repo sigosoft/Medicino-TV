@@ -65,4 +65,7 @@ dependencies {
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-messaging")
 
+    implementation 'com.pusher:pusher-java-client:2.4.2'
+
+
 }

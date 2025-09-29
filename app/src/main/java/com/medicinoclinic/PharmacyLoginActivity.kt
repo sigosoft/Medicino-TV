@@ -141,6 +141,7 @@ class PharmacyLoginActivity : AppCompatActivity() {
                     jsonObject = JSONObject(response.body()!!.string())
                     val message: String = jsonObject.getString("message")
                     val data: JSONObject = jsonObject.getJSONObject("data")
+                    baseClass.setSharedPreferance(applicationContext,"pharmacy_id",data.getInt("pharmacy_id").toString())
                     baseClass.setSharedPreferance(applicationContext,"token",data.getString("token"))
                     baseClass.setSharedPreferance(applicationContext,"type","4")
                     baseClass.setSharedPreferance(applicationContext,"pharmacyUsername",userName)
