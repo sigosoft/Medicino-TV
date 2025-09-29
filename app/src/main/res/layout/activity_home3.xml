@@ -4,26 +4,25 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/white"
+    android:background="@color/red"
     android:orientation="vertical"
-    android:weightSum="5"
     tools:context=".home.HomeActivity">
 
+    <!-- Main Content Area -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="4.7"
         android:orientation="horizontal"
-        android:background="@color/white"
-        android:weightSum="5">
+        android:background="@color/white">
 
+        <!-- Left Panel -->
         <LinearLayout
             android:id="@+id/lin_dr"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1.33"
-            android:orientation="vertical"
-            android:weightSum="3">
+            android:layout_height="match_parent"
+            android:layout_weight="1.3"
+            android:orientation="vertical">
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rv_doctors"
@@ -53,32 +52,27 @@
                 android:textSize="18dp"
                 android:visibility="visible" />
 
-
         </LinearLayout>
 
+        <!-- Right Panel -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="3.7"
             android:orientation="vertical"
-            android:weightSum="5">
-            <!--            <ImageView-->
-            <!--                android:layout_width="match_parent"-->
-            <!--                android:layout_height="wrap_content"-->
-            <!--                android:src="@drawable/homebg"-->
-            <!--                android:scaleType="fitXY">-->
-            <!--            </ImageView>-->
+            android:background="@color/white">
+
+            <!-- Video Section -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="4"
-                android:orientation="vertical"
-                android:scaleType="fitXY">
+                android:orientation="vertical">
 
                 <VideoView
                     android:id="@+id/videoView_ID"
-                    android:layout_width="fill_parent"
-                    android:layout_height="fill_parent"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
                     android:visibility="gone" />
 
                 <com.google.android.exoplayer2.ui.PlayerView
@@ -98,7 +92,6 @@
                     <ImageView
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
-                        android:layout_centerHorizontal="true"
                         android:contentDescription="@string/app_name"
                         android:src="@drawable/medicinologo" />
 
@@ -106,6 +99,7 @@
 
             </LinearLayout>
 
+            <!-- Slider Section -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
@@ -133,36 +127,11 @@
                     app:sliderIndicatorUnselectedColor="#FFF"
                     app:sliderScrollTimeInSec="1" />
 
-                <!--  <ImageView
-                          android:id="@+id/img_scrolling"
-                          android:layout_width="match_parent"
-                          android:layout_height="match_parent"
-                          android:layout_centerHorizontal="true"
-                          android:src="@drawable/medicinologo"
-                          android:contentDescription="@string/app_name" />-->
-
-
-                <!-- <com.medicinoclinic.utils.ScrollTextView
-                         android:id="@+id/scrollingtitle"
-                         android:layout_width="match_parent"
-                         android:layout_height="match_parent"
-                         android:layout_marginTop="5dp"
-                         android:layout_weight="1.8"
-                         android:fontFamily="@font/manjari"
-                         android:gravity="center_vertical"
-                         android:marqueeRepeatLimit="marquee_forever"
-                         android:scrollHorizontally="true"
-                         android:singleLine="true"
-                         android:text=""
-                         android:textColor="@color/white"
-                         android:textFontWeight="900"
-                         android:textSize="55dp" />-->
-
             </LinearLayout>
         </LinearLayout>
-
     </LinearLayout>
 
+    <!-- Bottom Ticker -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -170,7 +139,6 @@
         android:background="@color/red"
         android:gravity="center"
         android:orientation="horizontal">
-
 
         <com.medicinoclinic.utils.ScrollTextView
             android:id="@+id/scrollingtext"
@@ -183,7 +151,6 @@
             android:textColor="@color/white"
             android:textSize="23dp"
             android:textStyle="bold" />
-
     </LinearLayout>
 
 </LinearLayout>

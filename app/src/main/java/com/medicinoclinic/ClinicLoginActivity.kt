@@ -144,6 +144,7 @@ class ClinicLoginActivity : AppCompatActivity() {
                     val message: String = jsonObject.getString("message")
                     val data: JSONObject = jsonObject.getJSONObject("data")
                     baseClass.setSharedPreferance(applicationContext,"token",data.getString("token"))
+                    baseClass.setSharedPreferance(applicationContext,"clinic_id",data.getInt("clinic_id").toString())
                     baseClass.setSharedPreferance(applicationContext,"type","1")
                     baseClass.setSharedPreferance(applicationContext,"clinicUsername",userName)
                     baseClass.setSharedPreferance(applicationContext,"clinicPassword",password)

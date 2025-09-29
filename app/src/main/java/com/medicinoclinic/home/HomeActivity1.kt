@@ -79,6 +79,13 @@ import android.provider.Settings
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.medicinoclinic.adapter.CounterAdapter
 import com.medicinoclinic.model.CounterListingModel
+import com.pusher.client.Pusher
+import com.pusher.client.PusherOptions
+import com.pusher.client.channel.Channel
+import com.pusher.client.channel.SubscriptionEventListener
+import com.pusher.client.connection.ConnectionEventListener
+import com.pusher.client.connection.ConnectionState
+import com.pusher.client.connection.ConnectionStateChange
 
 var doctor_selected_or_unselected = false
 
@@ -105,6 +112,10 @@ class HomeActivity1 : AppCompatActivity() {
     val videoList = arrayListOf<VideoModel>()
     var video_counter = 0
     var token: String? = null
+    var logged_clinic_id: String? = null
+    var logged_doctor_id: String? = null
+    var logged_lab_id: String? = null
+    var logged_pharmacy_id: String? = null
     var type: String? = null
     var todayString: String? = null
     var baseClass = BaseClass()
@@ -133,22 +144,27 @@ class HomeActivity1 : AppCompatActivity() {
     private var paginatedCounters: List<List<CounterListingModel>> = listOf()
     var recyclerViewCounter: RecyclerView? = null
     private val pagecounterSize = 5
+
 //    private val updateTextTask = object : Runnable {
 //        override fun run() {
-//            getDoctorDetails(type!!)
+//            if (type.equals("1") || type.equals("2")) {
+//                getDoctorDetails(type!!)
+//            } else {
+//                getCountersDetails(type!!) // Re-fetch and update UI
+//            }
 //            mainHandler.postDelayed(this, 10000)
 //        }
 //    }
 
-    private val receiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (type.equals("1") || type.equals("2")) {
-                getDoctorDetails(type!!)
-            } else {
-                getCountersDetails(type!!) // Re-fetch and update UI
-            }
-        }
-    }
+//    private val receiver = object : BroadcastReceiver() {
+//        override fun onReceive(context: Context?, intent: Intent?) {
+//            if (type.equals("1") || type.equals("2")) {
+//                getDoctorDetails(type!!)
+//            } else {
+//                getCountersDetails(type!!) // Re-fetch and update UI
+//            }
+//        }
+//    }
     val runnable = object : Runnable {
 
         override fun run() {
@@ -195,6 +211,10 @@ class HomeActivity1 : AppCompatActivity() {
         playerView = findViewById(R.id.playerView)
 
         token = baseClass.getSharedPreferance(this@HomeActivity1, "token", "")
+        logged_clinic_id = baseClass.getSharedPreferance(this@HomeActivity1, "clinic_id", "")
+        logged_doctor_id = baseClass.getSharedPreferance(this@HomeActivity1, "doctor_id", "")
+        logged_lab_id = baseClass.getSharedPreferance(this@HomeActivity1, "lab_id", "")
+        logged_pharmacy_id = baseClass.getSharedPreferance(this@HomeActivity1, "pharmacy_id", "")
         type = baseClass.getSharedPreferance(this@HomeActivity1, "type", "")
         RetrofitClient.bearer_token = token
 
@@ -221,6 +241,68 @@ class HomeActivity1 : AppCompatActivity() {
 //        mediaController.setMediaPlayer(videoView)
         btn_settings?.requestFocus()
         recyclerViewDoctor?.requestFocus()
+
+        val options = PusherOptions()
+        options.setCluster("ap2") // change to your cluster
+
+        //val pusher = Pusher("3552a5e736f71100d73f", options) - dev
+        val pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
+
+        // Connection logging
+        pusher.connect(object : ConnectionEventListener {
+            override fun onConnectionStateChange(change: ConnectionStateChange) {
+                Log.d("Pusher", "State changed from ${change.previousState} to ${change.currentState}")
+            }
+
+            override fun onError(message: String?, code: String?, e: Exception?) {
+                Log.e("Pusher", "Error: $message, Code: $code, Exception: $e")
+            }
+        }, ConnectionState.ALL)
+
+        val channel: Channel = pusher.subscribe("medicino-tv-live")
+
+        channel.bind("token-called") { event ->
+            runOnUiThread {
+                if (type.equals("1") || type.equals("2")) {
+                    var clinicId = 0
+                    getDoctorDetails(type!!)
+                    val jsonObject = JSONObject(event.data)
+
+                    val doctorId = jsonObject.getInt("doctor_id")
+                    if(type.equals("1")){//clinic login
+                     clinicId = jsonObject.getInt("clinic_id")
+                    }
+                    val tokenNumber = jsonObject.getString("token_number")
+                    val roomNumber = jsonObject.getString("room_number")
+                    if((type.equals("1") && logged_clinic_id.equals(clinicId.toString()))||(type.equals("2") && doctorId.toString().equals(logged_doctor_id))){
+                        convertTextToSpeech(tokenNumber, roomNumber, doctorId.toString())
+                    }
+                } else {
+                    var lab_id = 0
+                    var pharmacy_id = 0
+                    getCountersDetails(type!!) // Re-fetch and update UI
+                    val jsonObject = JSONObject(event.data)
+
+                    if(type.equals("3")){//lab login
+                        lab_id = jsonObject.getInt("lab_id")
+                    }else{
+                        pharmacy_id = jsonObject.getInt("pharmacy_id")
+                    }
+                    val counter_id = jsonObject.getInt("counter_id")
+                    val tokenNumber = jsonObject.getInt("token_number")
+                    val booking_id = jsonObject.getInt("counter_booking_id")
+                    if((type.equals("3") && logged_lab_id.equals(lab_id.toString()))||(type.equals("4") && pharmacy_id.toString().equals(logged_pharmacy_id))){
+                        convertTokenTextToSpeech(tokenNumber.toString(),counter_id.toString(),booking_id.toString())
+                    }
+
+                }
+
+                Log.d("PusherEvent", "Received: ${event.data}")
+                //Toast.makeText(this, "Message: ${event.data}", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        pusher.connect()
 
         btn_settings!!.setOnClickListener(View.OnClickListener {
 
@@ -251,8 +333,8 @@ class HomeActivity1 : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-//        mainHandler.removeCallbacks(updateTextTask)
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver)
+       // mainHandler.removeCallbacks(updateTextTask)
+        //LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver)
         if (Util.SDK_INT >= 24) {
             playerView!!.onPause()
         }
@@ -729,7 +811,7 @@ class HomeActivity1 : AppCompatActivity() {
             }
         })
     }
-
+//
     private fun updateDoctorListPage() {
         if (paginatedDoctors.isNotEmpty()) {
             currentPage = (currentPage + 1) % paginatedDoctors.size
@@ -1013,7 +1095,7 @@ class HomeActivity1 : AppCompatActivity() {
 
                             recyclerViewDoctor?.layoutManager =
                                 LinearLayoutManager(this@HomeActivity1)
-                            doctorAdapter = DoctorAdapter(listOf()) // initially empty
+                             doctorAdapter = DoctorAdapter(listOf()) // initially empty
                             recyclerViewDoctor?.adapter = doctorAdapter
 
                             paginatedDoctors = doctorsList.chunked(pageSize)
@@ -1024,7 +1106,7 @@ class HomeActivity1 : AppCompatActivity() {
                                 Log.d("DoctorPaging1", "Initial Page: 0")
                                 handler.postDelayed({ updateDoctorListPage() }, 15_000)
                             }
-                            speakOut()
+                            //speakOut()
                         } else {
                             recyclerViewDoctor?.isVisible = false
                             btn_settings?.isVisible = true
@@ -1103,7 +1185,7 @@ class HomeActivity1 : AppCompatActivity() {
                                 Log.d("counters Paging1", "Initial Page: 0")
                                 handler.postDelayed({ updateCountersListPage() }, 15_000)
                             }
-                            speakOutCounterToken()
+                            //speakOutCounterToken()
                         } else {
                             if (type.equals("3") || type.equals("4")) {//for lab and pharmacy
                                 recyclerViewCounter?.isVisible = false
@@ -1249,8 +1331,8 @@ class HomeActivity1 : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        LocalBroadcastManager.getInstance(this)
-            .registerReceiver(receiver, IntentFilter("doctor_data_updated"))
+//        LocalBroadcastManager.getInstance(this)
+//            .registerReceiver(receiver, IntentFilter("doctor_data_updated"))
         //mainHandler.post(updateTextTask)
         type = baseClass.getSharedPreferance(this@HomeActivity1, "type", "")
         mPlayer = SimpleExoPlayer.Builder(this@HomeActivity1).build()
@@ -1286,38 +1368,38 @@ class HomeActivity1 : AppCompatActivity() {
 //        }
 //    }
 
-    private fun speakOut() {
-        if (currentIndex < doctorsList.size) {
-            val text = doctorsList[currentIndex]
-//            println("Response code of token_call_status: " + currentIndex+ " "+text.token_call_status)
-            if (text.token_call_status == "false") {
-                // Change token_call_status to true
-                //changeTokenStatus(text.doctor_id)
-                convertTextToSpeech(text.token, text.room, text.doctor_id)
-            } else {
-                // Skip if the token has already been called
-                currentIndex++
-                speakOut() // Call the next token
-            }
-        }
-    }
-
-    private fun speakOutCounterToken() {
-        if (currentIndex < countersList.size) {
-            val text = countersList[currentIndex]
-//            println("Response code of token_call_status: " + currentIndex+ " "+text.token_call_status)
-//            if (text.call_status == "false") {
-            if(text.token!="null") {
-                convertTokenTextToSpeech(text.token, text.counter_id, text.booking_id)
-            }
+//    private fun speakOut() {
+//        if (currentIndex < doctorsList.size) {
+//            val text = doctorsList[currentIndex]
+////            println("Response code of token_call_status: " + currentIndex+ " "+text.token_call_status)
+//            if (text.token_call_status == "false") {
+//                // Change token_call_status to true
+//                //changeTokenStatus(text.doctor_id)
+//                convertTextToSpeech(text.token, text.room, text.doctor_id)
 //            } else {
-            // Skip if the token has already been called
-            currentIndex++
-            //speakOutCounterToken() // Call the next token
-            handler.postDelayed({ speakOutCounterToken() }, 4000)
-            // }
-        }
-    }
+//                // Skip if the token has already been called
+//                currentIndex++
+//                speakOut() // Call the next token
+//            }
+//        }
+//    }
+//
+//    private fun speakOutCounterToken() {
+//        if (currentIndex < countersList.size) {
+//            val text = countersList[currentIndex]
+////            println("Response code of token_call_status: " + currentIndex+ " "+text.token_call_status)
+////            if (text.call_status == "false") {
+//            if(text.token!="null") {
+//                convertTokenTextToSpeech(text.token, text.counter_id, text.booking_id)
+//            }
+////            } else {
+//            // Skip if the token has already been called
+//            currentIndex++
+//            //speakOutCounterToken() // Call the next token
+//            handler.postDelayed({ speakOutCounterToken() }, 4000)
+//            // }
+//        }
+//    }
 
     fun isPlayerPlayingWithSound(context: Context, player: SimpleExoPlayer): Boolean {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
