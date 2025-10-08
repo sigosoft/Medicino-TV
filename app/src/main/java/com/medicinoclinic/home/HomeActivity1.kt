@@ -245,7 +245,9 @@ class HomeActivity1 : AppCompatActivity() {
         val options = PusherOptions()
         options.setCluster("ap2") // change to your cluster
 
-        //val pusher = Pusher("3552a5e736f71100d73f", options) - dev
+        //dev key
+        //val pusher = Pusher("3552a5e736f71100d73f", options)
+        //live key
         val pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
 
         // Connection logging
@@ -259,6 +261,10 @@ class HomeActivity1 : AppCompatActivity() {
             }
         }, ConnectionState.ALL)
 
+        //dev channel
+        //val channel: Channel = pusher.subscribe("medicino-tv")
+
+        //live channel
         val channel: Channel = pusher.subscribe("medicino-tv-live")
 
         channel.bind("token-called") { event ->
@@ -302,7 +308,7 @@ class HomeActivity1 : AppCompatActivity() {
             }
         }
 
-        pusher.connect()
+//        pusher.connect()
 
         btn_settings!!.setOnClickListener(View.OnClickListener {
 
@@ -1122,7 +1128,7 @@ class HomeActivity1 : AppCompatActivity() {
 
                         500 -> Toast.makeText(
                             this@HomeActivity1,
-                            getString(R.string.api_error) + "2",
+                            getString(R.string.api_error) + "2 "+response.toString(),
                             Toast.LENGTH_LONG
                         ).show()
                     }
@@ -1203,7 +1209,7 @@ class HomeActivity1 : AppCompatActivity() {
 
                         500 -> Toast.makeText(
                             this@HomeActivity1,
-                            getString(R.string.api_error) + "2",
+                            getString(R.string.api_error) + "2 "+response.toString(),
                             Toast.LENGTH_LONG
                         ).show()
                     }

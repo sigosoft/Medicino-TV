@@ -22,7 +22,7 @@ object RetrofitClient {
                 .build()
 
             retrofit = Retrofit.Builder()
-                .client(client)
+                .client (client)
                 .baseUrl(baseUrl)
                 .addConverterFactory(GsonConverterFactory.create())
                 .build()

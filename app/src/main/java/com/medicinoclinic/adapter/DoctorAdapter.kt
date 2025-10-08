@@ -16,11 +16,19 @@ import java.lang.reflect.Field
 class DoctorAdapter(private var mList: List<DoctorListingModel>) : RecyclerView.Adapter<DoctorAdapter.ViewHolder>() {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_doctor_room, parent, false)
+        val view: View = if (mList.size <= 2) {
+            LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_doctor_room_new, parent, false)
+        } else {
+            LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_doctor_room, parent, false)
+        }
+
         view.isFocusable = true
         view.isFocusableInTouchMode = true
+
         return ViewHolder(view)
+
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
