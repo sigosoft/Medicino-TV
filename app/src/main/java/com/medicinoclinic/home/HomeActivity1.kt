@@ -246,9 +246,9 @@ class HomeActivity1 : AppCompatActivity() {
         options.setCluster("ap2") // change to your cluster
 
         //dev key
-        //val pusher = Pusher("3552a5e736f71100d73f", options)
+        val pusher = Pusher("3552a5e736f71100d73f", options)
         //live key
-        val pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
+        //val pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
 
         // Connection logging
         pusher.connect(object : ConnectionEventListener {
@@ -262,10 +262,10 @@ class HomeActivity1 : AppCompatActivity() {
         }, ConnectionState.ALL)
 
         //dev channel
-        //val channel: Channel = pusher.subscribe("medicino-tv")
+        val channel: Channel = pusher.subscribe("medicino-tv")
 
         //live channel
-        val channel: Channel = pusher.subscribe("medicino-tv-live")
+        //val channel: Channel = pusher.subscribe("medicino-tv-live")
 
         channel.bind("token-called") { event ->
             runOnUiThread {
@@ -1126,11 +1126,11 @@ class HomeActivity1 : AppCompatActivity() {
                             Toast.LENGTH_LONG
                         ).show()
 
-                        500 -> Toast.makeText(
-                            this@HomeActivity1,
-                            getString(R.string.api_error) + "2 "+response.toString(),
-                            Toast.LENGTH_LONG
-                        ).show()
+//                        500 -> Toast.makeText(
+//                            this@HomeActivity1,
+//                            getString(R.string.api_error) + "2 "+response.toString(),
+//                            Toast.LENGTH_LONG
+//                        ).show()
                     }
                 }
             }
@@ -1207,11 +1207,11 @@ class HomeActivity1 : AppCompatActivity() {
                             Toast.LENGTH_LONG
                         ).show()
 
-                        500 -> Toast.makeText(
-                            this@HomeActivity1,
-                            getString(R.string.api_error) + "2 "+response.toString(),
-                            Toast.LENGTH_LONG
-                        ).show()
+//                        500 -> Toast.makeText(
+//                            this@HomeActivity1,
+//                            getString(R.string.api_error) + "2 "+response.toString(),
+//                            Toast.LENGTH_LONG
+//                        ).show()
                     }
                 }
             }

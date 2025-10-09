@@ -28,6 +28,7 @@ class SettingsActivity :  FragmentActivity() {
     var baseClass =  BaseClass()
     var token : String ?= null
     var type: String ?= null
+    var logoutClicked: Boolean? = false
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,7 +50,9 @@ class SettingsActivity :  FragmentActivity() {
 
 
         btn_logout!!.setOnClickListener(View.OnClickListener {
-            logout()
+            if(logoutClicked==false) {
+                logout()
+            }
         })
 
        /* recyclerview!!.setOnFocusChangeListener(View.OnFocusChangeListener { v, hasFocus ->
@@ -134,7 +137,7 @@ class SettingsActivity :  FragmentActivity() {
     }
 
     private fun logout() {
-
+        logoutClicked = true
         var mAPIService: APIService? = null
         mAPIService = RetrofitClient.ApiUtils.apiService1
         mAPIService.logout().enqueue(object :
