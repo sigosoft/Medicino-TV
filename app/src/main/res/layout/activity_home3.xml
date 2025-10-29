@@ -6,7 +6,8 @@
     android:layout_height="match_parent"
     android:background="@color/red"
     android:orientation="vertical"
-    tools:context=".home.HomeActivity">
+    tools:context=".home.HomeActivity"
+    android:weightSum="5">
 
     <!-- Main Content Area -->
     <LinearLayout
@@ -14,7 +15,8 @@
         android:layout_height="0dp"
         android:layout_weight="4.7"
         android:orientation="horizontal"
-        android:background="@color/white">
+        android:background="@color/white"
+        android:weightSum="5">
 
         <!-- Left Panel -->
         <LinearLayout
@@ -60,7 +62,8 @@
             android:layout_height="match_parent"
             android:layout_weight="3.7"
             android:orientation="vertical"
-            android:background="@color/white">
+            android:background="@color/white"
+            android:weightSum="5">
 
             <!-- Video Section -->
             <LinearLayout
@@ -73,13 +76,18 @@
                     android:id="@+id/videoView_ID"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
+                    android:adjustViewBounds="true"
                     android:visibility="gone" />
 
                 <com.google.android.exoplayer2.ui.PlayerView
                     android:id="@+id/playerView"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    app:use_controller="false" />
+                    android:adjustViewBounds="true"
+                    android:layout_gravity="center"
+                    app:use_controller="false"
+                    app:resize_mode="fit" />
+
 
                 <LinearLayout
                     android:id="@+id/lin_video"

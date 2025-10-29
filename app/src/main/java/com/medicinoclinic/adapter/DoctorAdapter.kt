@@ -26,17 +26,25 @@ class DoctorAdapter(private var mList: List<DoctorListingModel>) : RecyclerView.
 
         view.isFocusable = true
         view.isFocusableInTouchMode = true
-
+        val holder = ViewHolder(view)
+        setMarqueeSpeed(holder.tvDoctorName, 20f)
         return ViewHolder(view)
 
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val doctor = mList[position]
-        setMarqueeSpeed(holder.tvDoctorName, 20f)
 
-        holder.tvDoctorName.isSelected = doctor.name.length > 10
         holder.tvDoctorName.text = "Dr. ${doctor.name}"
+        holder.tvDoctorName.post {
+            holder.tvDoctorName.isSelected = doctor.name.length > 10
+        }
+
+
+//        setMarqueeSpeed(holder.tvDoctorName, 20f)
+//
+//        holder.tvDoctorName.isSelected = doctor.name.length > 10
+        //holder.tvDoctorName.text = "Dr. ${doctor.name}"
         holder.tv_room.text = if (doctor.room == "null") "NA" else doctor.room
         holder.tv_token.text = doctor.token.trim().ifEmpty { "0" }
 
