@@ -17,8 +17,22 @@ import java.lang.reflect.Field
 class CounterAdapter(private var mList: List<CounterListingModel>) : RecyclerView.Adapter<CounterAdapter.ViewHolder>() {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_counter, parent, false)
+
+        val view: View = if (mList.size <= 2) {
+            LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_counter1, parent, false)
+        } else if (mList.size == 3) {
+            LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_counter2, parent, false)
+        }else if (mList.size == 4) {
+            LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_counter3, parent, false)
+        }
+        else {
+            LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_counter, parent, false)
+        }
+
         view.isFocusable = true
         view.isFocusableInTouchMode = true
         return ViewHolder(view)

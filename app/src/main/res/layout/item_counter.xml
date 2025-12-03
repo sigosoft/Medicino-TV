@@ -21,13 +21,14 @@
         android:singleLine="true"
         android:text="Counter A"
         android:textColor="@color/black"
-        android:textSize="33sp"
+        android:textSize="27sp"
         android:textStyle="bold"
         android:paddingTop="0dp"
         android:paddingBottom="0dp"
         android:lineSpacingExtra="0dp"
         android:textFontWeight="900"
-        android:includeFontPadding="false" />
+        android:includeFontPadding="false"
+        android:fontFamily="@font/poppins_regular"/>
 
     <TextView
         android:id="@+id/tv_token"
@@ -36,11 +37,12 @@
         android:gravity="center_vertical|center"
         android:text="1234"
         android:textColor="@android:color/black"
-        android:textSize="53sp"
+        android:textSize="47sp"
         android:textStyle="bold"
         android:paddingTop="0dp"
         android:paddingBottom="0dp"
         android:lineSpacingExtra="0dp"
-        android:includeFontPadding="false" />
+        android:includeFontPadding="false"
+        android:fontFamily="@font/poppins_bold"/>
 
 </LinearLayout>
