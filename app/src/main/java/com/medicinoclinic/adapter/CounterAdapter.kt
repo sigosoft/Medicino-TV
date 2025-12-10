@@ -42,7 +42,7 @@ class CounterAdapter(private var mList: List<CounterListingModel>) : RecyclerVie
         val counter = mList[position]
         setMarqueeSpeed(holder.tvCounterName, 20f)
 
-        holder.tvCounterName.isSelected = counter.counter_name.length > 10
+        holder.tvCounterName.isSelected = counter.counter_name.length > 7
         holder.tvCounterName.text = counter.counter_name
 //        holder.tv_room.text.
         holder.tv_token.text =  counter.token.trim().ifEmpty { "0" }

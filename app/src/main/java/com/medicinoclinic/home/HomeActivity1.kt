@@ -246,9 +246,9 @@ class HomeActivity1 : AppCompatActivity() {
         options.setCluster("ap2") // change to your cluster
 
         //dev key
-        val pusher = Pusher("3552a5e736f71100d73f", options)
+        //val pusher = Pusher("3552a5e736f71100d73f", options)
         //live key
-        //val pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
+        val pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
 
         // Connection logging
         pusher.connect(object : ConnectionEventListener {
@@ -262,26 +262,32 @@ class HomeActivity1 : AppCompatActivity() {
         }, ConnectionState.ALL)
 
         //dev channel
-        val channel: Channel = pusher.subscribe("medicino-tv")
+        //val channel: Channel = pusher.subscribe("medicino-tv")
 
         //live channel
-        //val channel: Channel = pusher.subscribe("medicino-tv-live")
+        val channel: Channel = pusher.subscribe("medicino-tv-live")
 
         channel.bind("token-called") { event ->
             runOnUiThread {
+                Log.d("PusherEvent", "Received: ${event.data}")
                 if (type.equals("1") || type.equals("2")) {
                     var clinicId = 0
                     getDoctorDetails(type!!)
                     val jsonObject = JSONObject(event.data)
 
-                    val doctorId = jsonObject.getInt("doctor_id")
-                    if(type.equals("1")){//clinic login
-                     clinicId = jsonObject.getInt("clinic_id")
-                    }
-                    val tokenNumber = jsonObject.getString("token_number")
-                    val roomNumber = jsonObject.getString("room_number")
-                    if((type.equals("1") && logged_clinic_id.equals(clinicId.toString()))||(type.equals("2") && doctorId.toString().equals(logged_doctor_id))){
-                        convertTextToSpeech(tokenNumber, roomNumber, doctorId.toString())
+                    val doctorId = jsonObject.optInt("doctor_id", -1)
+                    if(doctorId != -1) {
+                        if (type.equals("1")) {//clinic login
+                            clinicId = jsonObject.getInt("clinic_id")
+                        }
+                        val tokenNumber = jsonObject.getString("token_number")
+                        val roomNumber = jsonObject.getString("room_number")
+                        if ((type.equals("1") && logged_clinic_id.equals(clinicId.toString())) || (type.equals(
+                                "2"
+                            ) && doctorId.toString().equals(logged_doctor_id))
+                        ) {
+                            convertTextToSpeech(tokenNumber, roomNumber, doctorId.toString())
+                        }
                     }
                 } else {
                     var lab_id = 0
@@ -289,21 +295,33 @@ class HomeActivity1 : AppCompatActivity() {
                     getCountersDetails(type!!) // Re-fetch and update UI
                     val jsonObject = JSONObject(event.data)
 
+                    print("Event data: ${event.data}")
+
                     if(type.equals("3")){//lab login
-                        lab_id = jsonObject.getInt("lab_id")
+                        //lab_id = jsonObject.getInt("lab_id")
+                         lab_id = jsonObject.optInt("lab_id", -1)
                     }else{
-                        pharmacy_id = jsonObject.getInt("pharmacy_id")
+                         pharmacy_id = jsonObject.optInt("pharmacy_id", -1)
+                        //pharmacy_id = jsonObject.getInt("pharmacy_id")
                     }
-                    val counter_id = jsonObject.getInt("counter_id")
-                    val tokenNumber = jsonObject.getInt("token_number")
-                    val booking_id = jsonObject.getInt("counter_booking_id")
-                    if((type.equals("3") && logged_lab_id.equals(lab_id.toString()))||(type.equals("4") && pharmacy_id.toString().equals(logged_pharmacy_id))){
-                        convertTokenTextToSpeech(tokenNumber.toString(),counter_id.toString(),booking_id.toString())
+                    if((type.equals("3")&&lab_id != -1) || (type.equals("4")&&pharmacy_id != -1)) {
+                        val counter_id = jsonObject.getInt("counter_id")
+                        val tokenNumber = jsonObject.getInt("token_number")
+                        val booking_id = jsonObject.getInt("counter_booking_id")
+                        if ((type.equals("3") && logged_lab_id.equals(lab_id.toString())) || (type.equals(
+                                "4"
+                            ) && pharmacy_id.toString().equals(logged_pharmacy_id))
+                        ) {
+                            convertTokenTextToSpeech(
+                                tokenNumber.toString(),
+                                counter_id.toString(),
+                                booking_id.toString()
+                            )
+                        }
                     }
 
                 }
 
-                Log.d("PusherEvent", "Received: ${event.data}")
                 //Toast.makeText(this, "Message: ${event.data}", Toast.LENGTH_SHORT).show()
             }
         }
