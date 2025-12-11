@@ -248,7 +248,7 @@ class HomeActivity1 : AppCompatActivity() {
         //dev key
         //val pusher = Pusher("3552a5e736f71100d73f", options)
         //live key
-        val pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
+         val pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
 
         // Connection logging
         pusher.connect(object : ConnectionEventListener {
@@ -265,7 +265,7 @@ class HomeActivity1 : AppCompatActivity() {
         //val channel: Channel = pusher.subscribe("medicino-tv")
 
         //live channel
-        val channel: Channel = pusher.subscribe("medicino-tv-live")
+         val channel: Channel = pusher.subscribe("medicino-tv-live")
 
         channel.bind("token-called") { event ->
             runOnUiThread {
@@ -306,8 +306,8 @@ class HomeActivity1 : AppCompatActivity() {
                     }
                     if((type.equals("3")&&lab_id != -1) || (type.equals("4")&&pharmacy_id != -1)) {
                         val counter_id = jsonObject.getInt("counter_id")
-                        val tokenNumber = jsonObject.getInt("token_number")
-                        val booking_id = jsonObject.getInt("counter_booking_id")
+                        val tokenNumber = jsonObject.optInt("token_number",0)
+                        val booking_id = jsonObject.optInt("counter_booking_id",0)
                         if ((type.equals("3") && logged_lab_id.equals(lab_id.toString())) || (type.equals(
                                 "4"
                             ) && pharmacy_id.toString().equals(logged_pharmacy_id))
