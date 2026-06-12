@@ -245,10 +245,11 @@ class HomeActivity1 : AppCompatActivity() {
         val options = PusherOptions()
         options.setCluster("ap2") // change to your cluster
 
-        //dev key
-        //val pusher = Pusher("3552a5e736f71100d73f", options)
+        //dev 
+        //val pusher = Pusher("e8a2220b4c88b31f047b", options)
+        val pusher = Pusher("3552a5e736f71100d73f", options)
         //live key
-         val pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
+         // pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
 
         // Connection logging
         pusher.connect(object : ConnectionEventListener {

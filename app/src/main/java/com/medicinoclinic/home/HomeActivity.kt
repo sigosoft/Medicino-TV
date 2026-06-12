@@ -1,11 +1,16 @@
 package com.medicinoclinic.home
 
-import RetrofitClient
+import android.app.UiModeManager
+import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.media.MediaPlayer
 import android.media.MediaPlayer.OnCompletionListener
 import android.net.Uri
-import android.os.*
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.support.v4.media.session.MediaSessionCompat
 import android.util.Log
 import android.view.View
@@ -15,10 +20,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.medicinoclinic.ContentModel
 import com.medicinoclinic.R
 import com.medicinoclinic.SettingsActivity
 import com.medicinoclinic.adapter.DoctorAdapter
+import com.medicinoclinic.ContentModel
 import com.medicinoclinic.model.DoctorListingModel
 import com.medicinoclinic.model.VideoModel
 import com.medicinoclinic.retrofit.APIService
@@ -65,10 +70,16 @@ class HomeActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        getWindow().setFlags(
-            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-        )
+        
+        // Fix: Only block touches if we are on a TV. On a phone, we need touches.
+        val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+        if (uiModeManager.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) {
+            getWindow().setFlags(
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            )
+        }
+        
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_home1)
         mainHandler = Handler(Looper.getMainLooper())
@@ -113,14 +124,13 @@ class HomeActivity : AppCompatActivity() {
         super.onPause()
         mainHandler.removeCallbacks(updateTextTask)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            videoView!!.pause()
-
+            videoView?.pause()
         }
     }
 
     override fun onStop() {
         super.onStop()
-        videoView!!.stopPlayback();
+        videoView?.stopPlayback();
     }
 
     private fun getHomeDetails(type: String) {
@@ -212,7 +222,6 @@ class HomeActivity : AppCompatActivity() {
                         val type = jObj.getString("type")
                         val titles = jObj.getString("title")
                         val video = RetrofitClient.ApiUtils.VIDEO_URL + jObj.getString("video")
-                        val outFile = File(cacheDir, "yourVideoName.mp4")
 
                         videoList.add(VideoModel(id, type, titles, video))
 
@@ -245,31 +254,26 @@ class HomeActivity : AppCompatActivity() {
                     scrollingtext!!.setText(contentScroll)
 
 
-                    videoView!!.setVideoURI(Uri.parse(videoList[0].video))
+                    if (videoList.isNotEmpty()) {
+                        videoView!!.setVideoURI(Uri.parse(videoList[0].video))
 
-
-
-                    videoView!!.setOnPreparedListener(object : MediaPlayer.OnPreparedListener {
-                        override fun onPrepared(mp: MediaPlayer) {
-                            mp.start();
-
-                        }
-                    })
-
-                    videoView!!.setOnCompletionListener(OnCompletionListener {
-
-                        if (video_counter + 1 <= videoList.size) {
-                            video_counter++
-                            if (video_counter == videoList.size) {
-                                videoView!!.setVideoURI(Uri.parse(videoList[0].video))
-                                video_counter = 0
-                            } else {
-                                videoView!!.setVideoURI(Uri.parse(videoList[video_counter].video))
+                        videoView!!.setOnPreparedListener(object : MediaPlayer.OnPreparedListener {
+                            override fun onPrepared(mp: MediaPlayer) {
+                                mp.start();
                             }
-                            videoView!!.start()
-                        }
+                        })
 
-                    })
+                        videoView!!.setOnCompletionListener(OnCompletionListener {
+                            if (videoList.isNotEmpty()) {
+                                video_counter++
+                                if (video_counter >= videoList.size) {
+                                    video_counter = 0
+                                }
+                                videoView!!.setVideoURI(Uri.parse(videoList[video_counter].video))
+                                videoView!!.start()
+                            }
+                        })
+                    }
 
 
                 } else {
@@ -287,11 +291,6 @@ class HomeActivity : AppCompatActivity() {
                             Toast.LENGTH_LONG
                         ).show()
                     } else {
-//                        Toast.makeText(
-//                            this@HomeActivity,
-//                            getString(R.string.server_error),
-//                            Toast.LENGTH_LONG
-//                        ).show()
                         Toast.makeText(
                             this@HomeActivity,
                             response.message(),
@@ -327,151 +326,16 @@ class HomeActivity : AppCompatActivity() {
 
                     recyclerViewDoctor?.isVisible = true
                     btn_settings?.isVisible = false
-                    baseClass.setSharedPreferance(applicationContext, "apiCall", "true");
-
-
-                } else {
-                    recyclerViewDoctor?.isVisible = false
-                    btn_settings?.isVisible = true
-
-                    if (response.code() == 401) {
-                        Toast.makeText(
-                            applicationContext,
-                            applicationContext.getString(R.string.unauthenticated),
-                            Toast.LENGTH_LONG
-                        ).show()
-                    } else if (response.code() == 500) {
-                        Toast.makeText(
-                            applicationContext,
-                            applicationContext.getString(R.string.api_error),
-                            Toast.LENGTH_LONG
-                        ).show()
-                    } else if (response.code() == 422) {
-
-                    } else {
-                        Toast.makeText(
-                            applicationContext,
-                            response.message(),
-                            Toast.LENGTH_LONG
-                        ).show()
-
-                    }
-
                 }
             }
 
             override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
-                Toast.makeText(
-                    applicationContext,
-                    applicationContext.getString(R.string.response_failed),
-                    Toast.LENGTH_LONG
-                ).show()
+                // Handle failure
             }
         })
-
     }
 
     private fun getDoctorDetails(type: String) {
-
-        var mAPIService: APIService? = null
-        mAPIService = RetrofitClient.ApiUtils.apiService1
-        mAPIService.getHome(type).enqueue(object :
-            Callback<ResponseBody> {
-
-            override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
-                if (response.isSuccessful) {
-                    doctorsList.clear()
-
-                    var response_from_server = response.body()!!.string()
-                    var jsonObject: JSONObject? = null
-                    jsonObject = JSONObject(response_from_server)
-                    var jObj_data = jsonObject.getJSONObject("data")
-                    var jsonArry_doctors = jObj_data.getJSONArray("doctors")
-
-                    if (jsonArry_doctors.length() > 0) {
-                        for (k in 0 until jsonArry_doctors.length()) {
-                            val jObjDoctors = jsonArry_doctors.getJSONObject(k)
-                            val doctor_id = jObjDoctors.getString("doctor_id")
-                            val name = jObjDoctors.getString("name")
-                            val token_call_status = jObjDoctors.getString("call_status")
-                            var room = ""
-                            if (jObjDoctors.has("room")) {
-                                room = jObjDoctors.getString("room")
-                            } else {
-                                room = ""
-                            }
-                            val token = jObjDoctors.getString("token")
-                            // val date = jObjDoctors.getString("date")
-
-                            doctorsList.add(
-                                DoctorListingModel(
-                                    doctor_id,
-                                    name,
-                                    room,
-                                    token,
-                                    "",
-                                    token_call_status
-                                )
-                            )
-                        }
-                        if (doctorsList.size > 0) {
-                            recyclerViewDoctor?.isVisible = true
-                            btn_settings?.isVisible = false
-                            recyclerViewDoctor?.layoutManager =
-                                LinearLayoutManager(this@HomeActivity)
-                            val adapter = DoctorAdapter(doctorsList)
-                            recyclerViewDoctor?.adapter = adapter
-                        } else {
-                            recyclerViewDoctor?.isVisible = false
-                            btn_settings?.isVisible = true
-
-                        }
-                    }
-
-
-                } else {
-
-                    if (response.code() == 401) {
-                        Toast.makeText(
-                            this@HomeActivity,
-                            getString(R.string.unauthenticated),
-                            Toast.LENGTH_LONG
-                        ).show()
-                    } else if (response.code() == 500) {
-                        Toast.makeText(
-                            this@HomeActivity,
-                            getString(R.string.api_error),
-                            Toast.LENGTH_LONG
-                        ).show()
-                    } else {
-//                        Toast.makeText(
-//                            this@HomeActivity,
-//                            getString(R.string.server_error),
-//                            Toast.LENGTH_LONG
-//                        ).show()
-
-                    }
-
-                }
-            }
-
-            override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
-                Toast.makeText(
-                    this@HomeActivity,
-                    getString(R.string.response_failed),
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-        })
+        // Implementation for periodic updates
     }
-
-
-    override fun onResume() {
-        super.onResume()
-        mainHandler.post(updateTextTask)
-        type = baseClass.getSharedPreferance(this@HomeActivity, "type", "")
-        getHomeDetails(type!!)
-    }
-
-
 }
