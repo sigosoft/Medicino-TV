@@ -26,47 +26,41 @@ import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
 
-/**
- * Loads [MainFragment].
- */
 class LabLoginActivity : AppCompatActivity() {
-   var btn_login: Button? = null
-    var baseClass =  BaseClass()
-    var  login_status: String? = "false"
+    var btn_login: Button? = null
+    var baseClass = BaseClass()
+    var login_status: String? = "false"
     var labUserName: String? = ""
     var labPassword: String? = ""
     var fcm: String? = ""
+
     @SuppressLint("SuspiciousIndentation")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
         val isTv = uiModeManager.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
-        
-        // Fix: Only block touches if we are on a TV. On a phone, we need touches to enter credentials.
+
         if (isTv) {
             window.setFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE, WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
         }
-        
+
         setContentView(R.layout.activity_lablogin)
-        
-        // Fix for phones: Adjust margins programmatically to ensure fields are clickable and visible
+
         if (!isTv) {
             adjustLayoutForDevice()
         }
-        
-        val edusername : EditText = findViewById(R.id.edUserName)
-        val edPassword : EditText = findViewById(R.id.edPassword)
 
-        // Ensure EditTexts are interactive on phone
+        val edusername: EditText = findViewById(R.id.edUserName)
+        val edPassword: EditText = findViewById(R.id.edPassword)
+
         if (!isTv) {
             edusername.isFocusable = true
             edusername.isFocusableInTouchMode = true
             edusername.isEnabled = true
             edusername.isCursorVisible = true
-            
             edPassword.isFocusable = true
             edPassword.isFocusableInTouchMode = true
             edPassword.isEnabled = true
@@ -82,51 +76,33 @@ class LabLoginActivity : AppCompatActivity() {
                     Log.d("FCM_TOKEN1", fcm.toString())
                 }
             }
-        login_status = baseClass.getSharedPreferance(applicationContext,"login_status","false")
 
-            if(login_status.equals("false")) {
-                labUserName = baseClass.getSharedPreferance(applicationContext,"labUsername","")
-                labPassword = baseClass.getSharedPreferance(applicationContext,"labPassword","")
-               edusername.setText(labUserName)
-                edPassword.setText(labPassword)
-            }else{
-                val intent = Intent(this, HomeActivity1::class.java)
-                startActivity(intent)
-                finish()
-            }
+        login_status = baseClass.getSharedPreferance(applicationContext, "login_status", "false")
 
+        if (login_status.equals("false")) {
+            labUserName = baseClass.getSharedPreferance(applicationContext, "labUsername", "")
+            labPassword = baseClass.getSharedPreferance(applicationContext, "labPassword", "")
+            edusername.setText(labUserName)
+            edPassword.setText(labPassword)
+        } else {
+            val intent = Intent(this, HomeActivity1::class.java)
+            startActivity(intent)
+            finish()
+        }
 
         btn_login!!.setOnClickListener(View.OnClickListener {
             val userName = edusername.text.toString()
             val password = edPassword.text.toString()
             if (userName.trim().isEmpty()) {
-                Toast.makeText(
-                    this@LabLoginActivity,
-                    getString(R.string.enter_username),
-                    Toast.LENGTH_LONG
-                ).show()
-
+                Toast.makeText(this@LabLoginActivity, getString(R.string.enter_username), Toast.LENGTH_LONG).show()
             } else if (password.trim().isEmpty()) {
-                Toast.makeText(
-                    this@LabLoginActivity,
-                    getString(R.string.enter_password),
-                    Toast.LENGTH_LONG
-                ).show()
-
+                Toast.makeText(this@LabLoginActivity, getString(R.string.enter_password), Toast.LENGTH_LONG).show()
             } else if (password.trim().length < 6) {
-                Toast.makeText(
-                    this@LabLoginActivity,
-                    getString(R.string.password_length),
-                    Toast.LENGTH_LONG
-                ).show()
-
+                Toast.makeText(this@LabLoginActivity, getString(R.string.password_length), Toast.LENGTH_LONG).show()
+            } else {
+                getLogin(userName, password)
             }
-            else {
-                getLogin(userName,password)
-            }
-
         })
-
     }
 
     private fun adjustLayoutForDevice() {
@@ -162,34 +138,39 @@ class LabLoginActivity : AppCompatActivity() {
     }
 
     private fun getLogin(userName: String, password: String) {
-
         val progressDialog = ProgressDialog(this@LabLoginActivity, R.style.MyTheme)
         progressDialog.setProgressStyle(android.R.style.Widget_ProgressBar_Large)
         progressDialog.show()
         progressDialog.setCancelable(false)
 
-
         var mAPIService: APIService? = null
         mAPIService = RetrofitClient.ApiUtils.apiService
-        mAPIService.login(userName, password,"3",fcm.toString()).enqueue(object : Callback<ResponseBody> {
+        mAPIService.login(userName, password, "3", fcm.toString()).enqueue(object : Callback<ResponseBody> {
 
             override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
-
                 if (response.isSuccessful) {
                     progressDialog.dismiss()
                     try {
                         val bodyString = response.body()?.string() ?: ""
                         val jsonObject = JSONObject(bodyString)
                         val data: JSONObject = jsonObject.getJSONObject("data")
-                        val labId = if (data.has("lab_id")) data.opt("lab_id").toString() else ""
-                        baseClass.setSharedPreferance(applicationContext,"lab_id",labId)
-                        baseClass.setSharedPreferance(applicationContext,"token",data.getString("token"))
-                        baseClass.setSharedPreferance(applicationContext,"type","3")
-                        baseClass.setSharedPreferance(applicationContext,"labUsername",userName)
-                        baseClass.setSharedPreferance(applicationContext,"labPassword",password)
-                        RetrofitClient.bearer_token = data.getString("token")
 
-                        baseClass.setSharedPreferance(applicationContext,"login_status","true")
+                        val labId = if (data.has("lab_id")) data.opt("lab_id").toString() else ""
+                        baseClass.setSharedPreferance(applicationContext, "lab_id", labId)
+                        baseClass.setSharedPreferance(applicationContext, "token", data.getString("token"))
+                        baseClass.setSharedPreferance(applicationContext, "type", "3")
+                        baseClass.setSharedPreferance(applicationContext, "labUsername", userName)
+                        baseClass.setSharedPreferance(applicationContext, "labPassword", password)
+
+                        // FIX 1: Save token_management_type at login so it is available
+                        // immediately in HomeActivity1 before getHomeDetails API returns
+                        val tokenManagementType = if (data.has("token_management_type")) data.opt("token_management_type").toString() else ""
+                        baseClass.setSharedPreferance(applicationContext, "token_management_type", tokenManagementType)
+                        Log.d("DEBUG_LOGIN", "Saved token_management_type=$tokenManagementType for lab_id=$labId")
+
+                        RetrofitClient.bearer_token = data.getString("token")
+                        baseClass.setSharedPreferance(applicationContext, "login_status", "true")
+
                         val intent = Intent(applicationContext, HomeActivity1::class.java)
                         startActivity(intent)
                         finishAffinity()
@@ -197,8 +178,6 @@ class LabLoginActivity : AppCompatActivity() {
                         e.printStackTrace()
                         Toast.makeText(this@LabLoginActivity, getString(R.string.invalid_credentials), Toast.LENGTH_LONG).show()
                     }
-
-
                 } else {
                     progressDialog.dismiss()
                     try {
@@ -207,44 +186,25 @@ class LabLoginActivity : AppCompatActivity() {
 
                         if (response.code() == 400) {
                             val message: String = jsonObject.getString("message")
-
-                            Toast.makeText(
-                                this@LabLoginActivity,
-                                message,
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-
-                        else if (response.code() == 422) {
+                            Toast.makeText(this@LabLoginActivity, message, Toast.LENGTH_LONG).show()
+                        } else if (response.code() == 422) {
                             val message: JSONObject = jsonObject.getJSONObject("message")
                             if (message.has("username")) {
                                 val username: String = message.getJSONArray("username").get(0).toString()
                                 Toast.makeText(this@LabLoginActivity, username, Toast.LENGTH_LONG).show()
-                            }else  if (message.has("password")) {
+                            } else if (message.has("password")) {
                                 val username: String = message.getJSONArray("password").get(0).toString()
                                 Toast.makeText(this@LabLoginActivity, username, Toast.LENGTH_LONG).show()
-                            }
-                            else  if (message.has("email")) {
+                            } else if (message.has("email")) {
                                 val username: String = message.getJSONArray("email").get(0).toString()
                                 Toast.makeText(this@LabLoginActivity, username, Toast.LENGTH_LONG).show()
-                            }
-                            else {
+                            } else {
                                 Toast.makeText(this@LabLoginActivity, message.toString(), Toast.LENGTH_LONG).show()
                             }
-
                         } else if (response.code() == 500) {
-                            Toast.makeText(
-                                this@LabLoginActivity,
-                                getString(R.string.api_error),
-                                Toast.LENGTH_LONG
-                            ).show()
+                            Toast.makeText(this@LabLoginActivity, getString(R.string.api_error), Toast.LENGTH_LONG).show()
                         } else {
-                            Toast.makeText(
-                                this@LabLoginActivity,
-                                getString(R.string.invalid_credentials),
-                                Toast.LENGTH_LONG
-                            ).show()
-
+                            Toast.makeText(this@LabLoginActivity, getString(R.string.invalid_credentials), Toast.LENGTH_LONG).show()
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -254,16 +214,11 @@ class LabLoginActivity : AppCompatActivity() {
                             Toast.makeText(this@LabLoginActivity, getString(R.string.invalid_credentials), Toast.LENGTH_LONG).show()
                         }
                     }
-
                 }
             }
 
             override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
-                Toast.makeText(
-                    this@LabLoginActivity,
-                    getString(R.string.response_failed),
-                    Toast.LENGTH_LONG
-                ).show()
+                Toast.makeText(this@LabLoginActivity, getString(R.string.response_failed), Toast.LENGTH_LONG).show()
                 progressDialog.dismiss()
             }
         })
