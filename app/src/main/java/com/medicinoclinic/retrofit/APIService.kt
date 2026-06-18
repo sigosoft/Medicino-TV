@@ -110,6 +110,14 @@ interface APIService {
         @Field("booking_id") booking_id: String,
     ): Call<ResponseBody>
 
+    @POST("tv/convertOutsourceTokenTextToSpeech")
+    @FormUrlEncoded
+    fun convertOutsourceTokenTextToSpeech(
+        @Field("outsource_call_id") outsource_call_id: String,
+        @Field("counter_id") counter_id: String,
+        @Field("token_number") token_number: String,
+    ): Call<ResponseBody>
+
     @GET("api/logout")
     fun logout(): Call<ResponseBody>
 }

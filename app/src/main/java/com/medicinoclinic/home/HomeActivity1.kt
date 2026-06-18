@@ -1,5 +1,6 @@
 package com.medicinoclinic.home
 
+
 //import com.medicinoclinic.utils.ScrollTextView
 import RetrofitClient
 import RetrofitClient.ApiUtils.VIDEO_URL
@@ -117,6 +118,7 @@ class HomeActivity1 : AppCompatActivity() {
     var logged_lab_id: String? = null
     var logged_pharmacy_id: String? = null
     var type: String? = null
+    var token_management_type: String? = null
     var todayString: String? = null
     var baseClass = BaseClass()
     lateinit var mainHandler: Handler
@@ -144,6 +146,8 @@ class HomeActivity1 : AppCompatActivity() {
     private var paginatedCounters: List<List<CounterListingModel>> = listOf()
     var recyclerViewCounter: RecyclerView? = null
     private val pagecounterSize = 5
+
+    private lateinit var pusher: Pusher
 
 //    private val updateTextTask = object : Runnable {
 //        override fun run() {
@@ -246,8 +250,8 @@ class HomeActivity1 : AppCompatActivity() {
         options.setCluster("ap2") // change to your cluster
 
         //dev 
-        //val pusher = Pusher("e8a2220b4c88b31f047b", options)
-        val pusher = Pusher("3552a5e736f71100d73f", options)
+        pusher = Pusher("e8a2220b4c88b31f047b", options)
+        //val pusher = Pusher("3552a5e736f71100d73f", options)
         //live key
          // pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
 
@@ -264,17 +268,24 @@ class HomeActivity1 : AppCompatActivity() {
 
         //dev channel
         //val channel: Channel = pusher.subscribe("medicino-tv")
+        val channel: Channel = pusher.subscribe("medicino-tv-stagging")
 
         //live channel
-         val channel: Channel = pusher.subscribe("medicino-tv-live")
+         //val channel: Channel = pusher.subscribe("medicino-tv-live")
 
         channel.bind("token-called") { event ->
+            Log.d("PUSHER_DEBUG", "--------------------")
+            Log.d("PUSHER_DEBUG", "TOKEN-CALLED RECEIVED")
+            Log.d("PUSHER_DEBUG", "RAW DATA: ${event.data}")
+            Log.d("PUSHER_DEBUG", "--------------------")
             runOnUiThread {
-                Log.d("PusherEvent", "Received: ${event.data}")
+                Log.d("DEBUG_FLOW", "Mode: $token_management_type")
+                
+                val jsonObject = JSONObject(event.data)
+
                 if (type.equals("1") || type.equals("2")) {
                     var clinicId = 0
                     getDoctorDetails(type!!)
-                    val jsonObject = JSONObject(event.data)
 
                     val doctorId = jsonObject.optInt("doctor_id", -1)
                     if(doctorId != -1) {
@@ -291,39 +302,70 @@ class HomeActivity1 : AppCompatActivity() {
                         }
                     }
                 } else {
-                    var lab_id = 0
-                    var pharmacy_id = 0
-                    getCountersDetails(type!!) // Re-fetch and update UI
-                    val jsonObject = JSONObject(event.data)
+                    if (token_management_type != "3") {
+                        var lab_id = 0
+                        var pharmacy_id = 0
+                        getCountersDetails(type!!) // Re-fetch and update UI
+                        val jsonObject = JSONObject(event.data)
 
-                    print("Event data: ${event.data}")
-
-                    if(type.equals("3")){//lab login
-                        //lab_id = jsonObject.getInt("lab_id")
-                         lab_id = jsonObject.optInt("lab_id", -1)
-                    }else{
-                         pharmacy_id = jsonObject.optInt("pharmacy_id", -1)
-                        //pharmacy_id = jsonObject.getInt("pharmacy_id")
-                    }
-                    if((type.equals("3")&&lab_id != -1) || (type.equals("4")&&pharmacy_id != -1)) {
-                        val counter_id = jsonObject.getInt("counter_id")
-                        val tokenNumber = jsonObject.optInt("token_number",0)
-                        val booking_id = jsonObject.optInt("counter_booking_id",0)
-                        if ((type.equals("3") && logged_lab_id.equals(lab_id.toString())) || (type.equals(
-                                "4"
-                            ) && pharmacy_id.toString().equals(logged_pharmacy_id))
-                        ) {
-                            convertTokenTextToSpeech(
-                                tokenNumber.toString(),
-                                counter_id.toString(),
-                                booking_id.toString()
-                            )
+                        if (type.equals("3")) {//lab login
+                            lab_id = jsonObject.optInt("lab_id", -1)
+                        } else {
+                            pharmacy_id = jsonObject.optInt("pharmacy_id", -1)
                         }
+                        if ((type.equals("3") && lab_id != -1) || (type.equals("4") && pharmacy_id != -1)) {
+                            val counterId = jsonObject.optInt("counter_id", -1)
+                            val tokenNumber = jsonObject.optString("token_number", "")
+                            val booking_id = jsonObject.optInt("counter_booking_id", 0)
+                            if ((type.equals("3") && logged_lab_id.equals(lab_id.toString())) || (type.equals(
+                                    "4"
+                                ) && pharmacy_id.toString().equals(logged_pharmacy_id))
+                            ) {
+                                convertTokenTextToSpeech(
+                                    tokenNumber,
+                                    counterId.toString(),
+                                    booking_id.toString()
+                                )
+                            }
+                        }
+                    } else {
+                        // Type 3: Just refresh UI, speech is separate
+                        Log.d("DEBUG_FLOW", "Type 3: Refreshing UI instantly")
+                        getCountersDetails(type!!)
                     }
-
                 }
+            }
+        }
 
-                //Toast.makeText(this, "Message: ${event.data}", Toast.LENGTH_SHORT).show()
+        channel.bind("outsource-token-called") { event ->
+            Log.d("PUSHER_DEBUG", "OUTSOURCE-TOKEN-CALLED RECEIVED")
+            Log.d("PUSHER_DEBUG", "RAW DATA: ${event.data}")
+            runOnUiThread {
+                if (token_management_type == "3") {
+                    val jsonObject = JSONObject(event.data)
+                    val outsource_call_id = jsonObject.optString("outsource_call_id", "")
+                    val counterId = jsonObject.optString("counter_id", "")
+                    val tokenNumber = jsonObject.optString("token_number", "")
+                    val lab_id = jsonObject.optInt("lab_id", -1)
+                    val pharmacy_id = jsonObject.optInt("pharmacy_id", -1)
+
+                    Log.d("DEBUG_FLOW", "Outsource Check -> Lab: $lab_id, Pharmacy: $pharmacy_id")
+
+                    if ((type == "3" && logged_lab_id == lab_id.toString()) ||
+                        (type == "4" && logged_pharmacy_id == pharmacy_id.toString())
+                    ) {
+                        Log.d("DEBUG_FLOW", "Calling Outsource Speech API and refreshing UI")
+                        
+                        // Background Sync
+                        getCountersDetails(type!!)
+
+                        convertOutsourceTokenTextToSpeech(
+                            outsource_call_id,
+                            counterId,
+                            tokenNumber
+                        )
+                    }
+                }
             }
         }
 
@@ -346,6 +388,8 @@ class HomeActivity1 : AppCompatActivity() {
             Log.d("USAGE", "Today's usage: $data_usage")
 
         }
+        
+        pusher.connect()
     }
 
 
@@ -446,6 +490,10 @@ class HomeActivity1 : AppCompatActivity() {
                     var jsonObject: JSONObject? = null
                     jsonObject = JSONObject(response_from_server)
                     var jObj_data = jsonObject.getJSONObject("data")
+                    if (jObj_data.has("token_management_type")) {
+                        token_management_type = jObj_data.getString("token_management_type")
+                        Log.d("DEBUG_CONFIG", "Mode: $token_management_type")
+                    }
                     var jsonArry_doctors = jObj_data.getJSONArray("doctors")
                     var jsonArray_counter_tokens = jObj_data.getJSONArray("counter_tokens")
                     var jsonArray_tvShows = jObj_data.getJSONArray("tv_shows")
@@ -531,15 +579,21 @@ class HomeActivity1 : AppCompatActivity() {
 
                             recyclerViewDoctor?.layoutManager =
                                 LinearLayoutManager(this@HomeActivity1)
-                            doctorAdapter = DoctorAdapter(doctorsList)// initially empty
-                            recyclerViewDoctor?.adapter = doctorAdapter
+                            
+                            // Optimization: Reuse adapter
+                            if (recyclerViewDoctor?.adapter == null) {
+                                doctorAdapter = DoctorAdapter(listOf())
+                                recyclerViewDoctor?.adapter = doctorAdapter
+                            } else {
+                                doctorAdapter = recyclerViewDoctor?.adapter as DoctorAdapter
+                            }
 
                             paginatedDoctors = doctorsList.chunked(pageSize)
 
                             if (paginatedDoctors.isNotEmpty()) {
+                                handler.removeCallbacksAndMessages(null)
                                 currentPage = 0
                                 doctorAdapter.setDoctors(paginatedDoctors[currentPage])
-                                Log.d("DoctorPaging", "Initial Page: 0")
                                 handler.postDelayed({ updateDoctorListPage() }, 15_000)
                             }
                         } else {
@@ -574,11 +628,11 @@ class HomeActivity1 : AppCompatActivity() {
                             val token = jObjCounters.getString("token")
                             val call_status = jObjCounters.getString("call_status")
                             val counter_name = jObjCounters.getString("counter_name")
-                            val booking_date = jObjCounters.getString("booking_date")
+                            val booking_id = jObjCounters.getString("booking_id")
 
                             countersList.add(
                                 CounterListingModel(
-                                    counter_id, token, call_status, counter_name, booking_date
+                                    counter_id, token, call_status, counter_name, booking_id
                                 )
                             )
                         }
@@ -589,15 +643,24 @@ class HomeActivity1 : AppCompatActivity() {
 
                             recyclerViewCounter?.layoutManager =
                                 LinearLayoutManager(this@HomeActivity1)
-                            counterAdapter = CounterAdapter(countersList)// initially empty
-                            recyclerViewCounter?.adapter = counterAdapter
+
+                            // Optimization: Only initialize adapter if null
+                            if (recyclerViewCounter?.adapter == null) {
+                                counterAdapter = CounterAdapter(listOf())
+                                recyclerViewCounter?.adapter = counterAdapter
+                            } else {
+                                counterAdapter = recyclerViewCounter?.adapter as CounterAdapter
+                            }
 
                             paginatedCounters = countersList.chunked(pagecounterSize)
 
                             if (paginatedCounters.isNotEmpty()) {
-                                currentPage = 0
+                                // Reset the timer
+                                handler.removeCallbacksAndMessages(null)
+                                
+                                if (currentPage >= paginatedCounters.size) currentPage = 0
                                 counterAdapter.setCounters(paginatedCounters[currentPage])
-                                Log.d("CountersPaging", "Initial counter Page: 0")
+                                
                                 handler.postDelayed({ updateCountersListPage() }, 15_000)
                             }
                         } else {
@@ -838,21 +901,25 @@ class HomeActivity1 : AppCompatActivity() {
     }
 //
     private fun updateDoctorListPage() {
+        handler.removeCallbacksAndMessages(null)
         if (paginatedDoctors.isNotEmpty()) {
             currentPage = (currentPage + 1) % paginatedDoctors.size
-            Log.d("DoctorPaging", "Showing page: $currentPage / ${paginatedDoctors.size}")
             doctorAdapter.setDoctors(paginatedDoctors[currentPage])
             handler.postDelayed({ updateDoctorListPage() }, 15_000)
         }
+
+        pusher.connect()
     }
 
     private fun updateCountersListPage() {
+        handler.removeCallbacksAndMessages(null)
         if (paginatedCounters.isNotEmpty()) {
             currentPage = (currentPage + 1) % paginatedCounters.size
-            Log.d("CountersPaging", "Showing page: $currentPage / ${paginatedCounters.size}")
             counterAdapter.setCounters(paginatedCounters[currentPage])
             handler.postDelayed({ updateCountersListPage() }, 15_000)
         }
+
+        pusher.connect()
     }
 
     private fun runTvShows(show_id: String, data_usage: String) {
@@ -1120,18 +1187,26 @@ class HomeActivity1 : AppCompatActivity() {
 
                             recyclerViewDoctor?.layoutManager =
                                 LinearLayoutManager(this@HomeActivity1)
-                             doctorAdapter = DoctorAdapter(listOf()) // initially empty
-                            recyclerViewDoctor?.adapter = doctorAdapter
+                            
+                            // Optimization: Reuse adapter
+                            if (recyclerViewDoctor?.adapter == null) {
+                                doctorAdapter = DoctorAdapter(listOf())
+                                recyclerViewDoctor?.adapter = doctorAdapter
+                            } else {
+                                doctorAdapter = recyclerViewDoctor?.adapter as DoctorAdapter
+                            }
 
                             paginatedDoctors = doctorsList.chunked(pageSize)
 
                             if (paginatedDoctors.isNotEmpty()) {
-                                currentPage = 0
+                                // Reset the timer
+                                handler.removeCallbacksAndMessages(null)
+                                
+                                if (currentPage >= paginatedDoctors.size) currentPage = 0
                                 doctorAdapter.setDoctors(paginatedDoctors[currentPage])
-                                Log.d("DoctorPaging1", "Initial Page: 0")
+                                
                                 handler.postDelayed({ updateDoctorListPage() }, 15_000)
                             }
-                            //speakOut()
                         } else {
                             recyclerViewDoctor?.isVisible = false
                             btn_settings?.isVisible = true
@@ -1199,18 +1274,26 @@ class HomeActivity1 : AppCompatActivity() {
 
                             recyclerViewCounter?.layoutManager =
                                 LinearLayoutManager(this@HomeActivity1)
-                            counterAdapter = CounterAdapter(listOf()) // initially empty
-                            recyclerViewCounter?.adapter = counterAdapter
+
+                            // Optimization: Reuse adapter
+                            if (recyclerViewCounter?.adapter == null) {
+                                counterAdapter = CounterAdapter(listOf())
+                                recyclerViewCounter?.adapter = counterAdapter
+                            } else {
+                                counterAdapter = recyclerViewCounter?.adapter as CounterAdapter
+                            }
 
                             paginatedCounters = countersList.chunked(pagecounterSize)
 
                             if (paginatedCounters.isNotEmpty()) {
-                                currentPage = 0
+                                // Reset the timer
+                                handler.removeCallbacksAndMessages(null)
+                                
+                                if (currentPage >= paginatedCounters.size) currentPage = 0
                                 counterAdapter.setCounters(paginatedCounters[currentPage])
-                                Log.d("counters Paging1", "Initial Page: 0")
+                                
                                 handler.postDelayed({ updateCountersListPage() }, 15_000)
                             }
-                            //speakOutCounterToken()
                         } else {
                             if (type.equals("3") || type.equals("4")) {//for lab and pharmacy
                                 recyclerViewCounter?.isVisible = false
@@ -1366,6 +1449,8 @@ class HomeActivity1 : AppCompatActivity() {
 //            getHomeDetails(type!!)
             getDoctorDetails(type!!)
         }
+
+        pusher.connect()
     }
 
 //    override fun onInit(status: Int) {
@@ -1684,6 +1769,45 @@ class HomeActivity1 : AppCompatActivity() {
 //                    Toast.LENGTH_LONG
 //                ).show()
 //                progressDialog.dismiss()
+                }
+            })
+    }
+
+    private fun convertOutsourceTokenTextToSpeech(
+        outsource_call_id: String,
+        counter_id: String,
+        token_number: String
+    ) {
+        Log.d("DEBUG_API", "Outsource ID: $outsource_call_id, Counter: $counter_id, Token: $token_number")
+        var mAPIService: APIService? = null
+        mAPIService = RetrofitClient.ApiUtils.apiService1
+        mAPIService.convertOutsourceTokenTextToSpeech(outsource_call_id, counter_id, token_number)
+            .enqueue(object : Callback<ResponseBody> {
+                override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
+                    if (response.isSuccessful) {
+                        val audioBytes = response.body()?.bytes()
+                        if (audioBytes != null) {
+                            if (isPlayerPlayingWithSound(this@HomeActivity1, mPlayer)) {
+                                mPlayer.pause()
+                            }
+                            val tempMp3 = File.createTempFile("audio_outsource", ".mp3", cacheDir)
+                            val fos = FileOutputStream(tempMp3)
+                            fos.write(audioBytes)
+                            fos.close()
+                            mediaPlayer = MediaPlayer().apply {
+                                setDataSource(tempMp3.absolutePath)
+                                prepare()
+                                start()
+                                setOnCompletionListener {
+                                    release()
+                                    mPlayer.play()
+                                }
+                            }
+                        }
+                    }
+                }
+                override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
+                    Log.e("DEBUG_API", "Outsource TTS API Fail: ${t.message}")
                 }
             })
     }

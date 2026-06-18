@@ -69,7 +69,7 @@ object RetrofitClient {
 
         val BASE_URL = "https://staging.medicino.in/"
         // "https://api.brightideainfotech.tech/"
-        val VIDEO_URL = "https://staging.medicino.in/tv/storage/"
+        val VIDEO_URL = "https://staging.medicino.in/storage/"
            // "https://api.brightideainfotech.tech/storage/"
 
         val apiService: APIService
