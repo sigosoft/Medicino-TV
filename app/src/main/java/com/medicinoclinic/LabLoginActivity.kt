@@ -216,7 +216,6 @@ class LabLoginActivity : AppCompatActivity() {
                     }
                 }
             }
-
             override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
                 Toast.makeText(this@LabLoginActivity, getString(R.string.response_failed), Toast.LENGTH_LONG).show()
                 progressDialog.dismiss()
