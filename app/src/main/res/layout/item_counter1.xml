@@ -10,15 +10,11 @@
     android:paddingEnd="10dp"
     android:weightSum="2">
 
-    <TextView
+    <com.medicinoclinic.utils.CounterScrollTextView
         android:id="@+id/tv_name"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:ellipsize="marquee"
-        android:focusableInTouchMode="true"
         android:gravity="center_vertical|center"
-        android:marqueeRepeatLimit="marquee_forever"
-        android:scrollHorizontally="true"
         android:singleLine="true"
         android:text="Counter A"
         android:fontFamily="@font/poppins_regular"

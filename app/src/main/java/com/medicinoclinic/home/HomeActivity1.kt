@@ -17,7 +17,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
 import android.media.AudioManager
-import android.media.MediaPlayer
 import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.Bundle
@@ -39,6 +38,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 
 import com.google.android.exoplayer2.MediaItem
+import com.google.android.exoplayer2.PlaybackException
 import com.google.android.exoplayer2.Player
 import com.google.android.exoplayer2.SimpleExoPlayer
 import com.google.android.exoplayer2.source.MediaSource
@@ -61,6 +61,7 @@ import com.medicinoclinic.model.VideoModel
 import com.medicinoclinic.retrofit.APIService
 import com.medicinoclinic.utils.BaseClass
 import com.medicinoclinic.utils.ScrollTextView
+import com.medicinoclinic.utils.TokenAnnouncementQueue
 import com.smarteist.autoimageslider.SliderView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -69,8 +70,6 @@ import org.json.JSONObject
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
-import java.io.File
-import java.io.FileOutputStream
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -127,9 +126,9 @@ class HomeActivity1 : AppCompatActivity() {
     private lateinit var playerView: PlayerView
     val sliderHandler = Handler(Looper.getMainLooper())
     var count: Int? = 0
-    var isVideoEnded = false
-    private var mediaPlayer: MediaPlayer? = null
     var data_usage: String = "0 B"
+    private var videoPlayerListener: Player.Listener? = null
+    private lateinit var announcementQueue: TokenAnnouncementQueue
 
     private var paginatedDoctors: List<List<DoctorListingModel>> = listOf()
     private var currentPage = 0
@@ -193,6 +192,11 @@ class HomeActivity1 : AppCompatActivity() {
 
         RetrofitClient.bearer_token = token
 
+        announcementQueue = TokenAnnouncementQueue(
+            context = this,
+            apiService = RetrofitClient.ApiUtils.apiService1
+        )
+
         Log.e("Token....", token.toString())
 
         val dateFormat: DateFormat = SimpleDateFormat("dd-MM-yyyy")
@@ -200,6 +204,7 @@ class HomeActivity1 : AppCompatActivity() {
         todayString = dateFormat.format(date)
 
         mPlayer = SimpleExoPlayer.Builder(this@HomeActivity1).build()
+        attachVideoPlayerListener()
 
         baseClass.setSharedPreferance(this@HomeActivity1, "date", todayString)
         getHomeDetails(type!!)
@@ -211,7 +216,7 @@ class HomeActivity1 : AppCompatActivity() {
         options.setCluster("ap2")
 
         // dev
-        pusher = Pusher("e8a2220b4c88b31f047b", options)
+         pusher = Pusher("e8a2220b4c88b31f047b", options)
         // live key
         // pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
 
@@ -226,7 +231,7 @@ class HomeActivity1 : AppCompatActivity() {
         }, ConnectionState.ALL)
 
         // dev channel
-        val channel: Channel = pusher.subscribe("medicino-tv-stagging")
+         val channel: Channel = pusher.subscribe("medicino-tv-stagging")
         // live channel
         // val channel: Channel = pusher.subscribe("medicino-tv-live")
 
@@ -261,7 +266,6 @@ class HomeActivity1 : AppCompatActivity() {
                     if (token_management_type != "3") {
                         var lab_id = 0
                         var pharmacy_id = 0
-                        getCountersDetails(type!!)
                         val jsonObject2 = JSONObject(event.data)
 
                         if (type.equals("3")) {
@@ -276,6 +280,7 @@ class HomeActivity1 : AppCompatActivity() {
                             if ((type.equals("3") && logged_lab_id.equals(lab_id.toString())) ||
                                 (type.equals("4") && pharmacy_id.toString().equals(logged_pharmacy_id))
                             ) {
+                                updateCounterTokenOnUi(counterId.toString(), tokenNumber, booking_id.toString())
                                 convertTokenTextToSpeech(
                                     tokenNumber,
                                     counterId.toString(),
@@ -284,9 +289,12 @@ class HomeActivity1 : AppCompatActivity() {
                             }
                         }
                     } else {
+                        val jsonObject2 = JSONObject(event.data)
+                        val counterId = jsonObject2.optString("counter_id", "")
+                        val tokenNumber = jsonObject2.optString("token_number", "")
+                        updateCounterTokenOnUi(counterId, tokenNumber)
                         // token_management_type == "3": Just refresh UI, outsource speech handled separately
                         Log.d("DEBUG_FLOW", "token_management_type 3: Refreshing UI only")
-                        getCountersDetails(type!!)
                     }
                 }
             }
@@ -320,7 +328,7 @@ class HomeActivity1 : AppCompatActivity() {
 
                     if (isMatch) {
                         Log.d("DEBUG_FLOW", "Match found. Refreshing UI and calling outsource TTS.")
-                        getCountersDetails(type!!)
+                        updateCounterTokenOnUi(counterId, tokenNumber)
                         convertOutsourceTokenTextToSpeech(
                             outsource_call_id,
                             counterId,
@@ -361,16 +369,10 @@ class HomeActivity1 : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        if (Util.SDK_INT >= 24) {
-            playerView!!.onPause()
-        }
     }
 
     override fun onStop() {
         super.onStop()
-        if (Util.SDK_INT >= 24) {
-            releasePlayer()
-        }
     }
 
     private fun initPlayer() {
@@ -411,12 +413,67 @@ class HomeActivity1 : AppCompatActivity() {
     }
 
     private fun releasePlayer() {
-        if (mPlayer == null) {
-            return
-        }
-        mPlayer!!.release()
+        if (!::mPlayer.isInitialized) return
+        videoPlayerListener?.let { mPlayer.removeListener(it) }
+        videoPlayerListener = null
+        mPlayer.playWhenReady = false
         mPlayer.stop()
-        mPlayer.setPlayWhenReady(false)
+        mPlayer.release()
+    }
+
+    private fun attachVideoPlayerListener() {
+        if (videoPlayerListener != null) return
+        videoPlayerListener = object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_AUTO &&
+                    reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT
+                ) {
+                    return
+                }
+                if (videoList.isNotEmpty()) {
+                    runTvShows(videoList[video_counter].id, data_usage)
+                    video_counter = (video_counter + 1) % videoList.size
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                Log.e("PLAYER_ERROR", "Playback failed: ${error.errorCodeName}", error)
+                if (mPlayer.hasNextMediaItem()) {
+                    mPlayer.seekToNextMediaItem()
+                } else {
+                    mPlayer.seekTo(0, 0)
+                }
+                mPlayer.prepare()
+                mPlayer.playWhenReady = true
+            }
+        }
+        mPlayer.addListener(videoPlayerListener!!)
+    }
+
+    private fun createMediaSourceForVideo(videoUrl: String): MediaSource {
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true)
+        val defaultDataSourceFactory: DataSource.Factory =
+            DefaultDataSourceFactory(applicationContext, httpDataSourceFactory)
+        val cacheDataSourceFactory = CacheDataSource.Factory()
+            .setCache(App.simpleCache)
+            .setUpstreamDataSourceFactory(defaultDataSourceFactory)
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        return ProgressiveMediaSource.Factory(cacheDataSourceFactory)
+            .createMediaSource(MediaItem.fromUri(Uri.parse(videoUrl)))
+    }
+
+    private fun startVideoPlayback() {
+        if (videoList.isEmpty() || !::mPlayer.isInitialized) return
+
+        val mediaSources = videoList.map { createMediaSourceForVideo(it.video) }
+
+        playerView.player = mPlayer
+        mPlayer.setMediaSources(mediaSources, true)
+        mPlayer.repeatMode = Player.REPEAT_MODE_ALL
+        mPlayer.volume = 0.1f
+        mPlayer.playWhenReady = true
+        mPlayer.prepare()
+        video_counter = 0
     }
 
     private fun getHomeDetails(type: String) {
@@ -610,67 +667,9 @@ class HomeActivity1 : AppCompatActivity() {
                     scrollingtext!!.setText(contentScroll)
 
                     if (!videoList.isEmpty()) {
-                        val videoUri: Uri = Uri.parse(videoList[0].video)
-                        val mediaItem: MediaItem = MediaItem.fromUri(videoUri)
-                        val httpDataSourceFactory = DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true)
-                        val defaultDataSourceFactory: DataSource.Factory = DefaultDataSourceFactory(applicationContext, httpDataSourceFactory)
-                        val cacheDataSourceFactory = CacheDataSource.Factory()
-                            .setCache(App.simpleCache)
-                            .setUpstreamDataSourceFactory(defaultDataSourceFactory)
-                            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-
-                        val mediaSource: MediaSource = ProgressiveMediaSource.Factory(cacheDataSourceFactory).createMediaSource(mediaItem)
-                        playerView.player = mPlayer
-                        mPlayer!!.playWhenReady = true
-                        mPlayer.setVolume(0.1f)
-                        mPlayer!!.setMediaSource(mediaSource, true)
-                        mPlayer!!.prepare()
-
-                        mPlayer!!.addListener(object : Player.Listener {
-                            override fun onPlaybackStateChanged(state: Int) {
-                                if (state == Player.STATE_ENDED) {
-                                    if (!isVideoEnded) {
-                                        if (video_counter < videoList.size - 1) {
-                                            video_counter++
-                                        } else {
-                                            video_counter = 0
-                                        }
-                                        runTvShows(videoList[video_counter].id, data_usage)
-                                        isVideoEnded = true
-                                    }
-
-                                    if (video_counter + 1 <= videoList.size) {
-                                        if (video_counter == 0) {
-                                            val videoUri: Uri = Uri.parse(videoList[0].video)
-                                            val mediaItem: MediaItem = MediaItem.fromUri(videoUri)
-                                            val httpDataSourceFactory = DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true)
-                                            val defaultDataSourceFactory: DataSource.Factory = DefaultDataSourceFactory(applicationContext, httpDataSourceFactory)
-                                            val cacheDataSourceFactory = CacheDataSource.Factory()
-                                                .setCache(App.simpleCache)
-                                                .setUpstreamDataSourceFactory(defaultDataSourceFactory)
-                                                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-                                            val mediaSource: MediaSource = ProgressiveMediaSource.Factory(cacheDataSourceFactory).createMediaSource(mediaItem)
-                                            mPlayer!!.setMediaSource(mediaSource, true)
-                                            mPlayer!!.prepare()
-                                        } else {
-                                            val videoUri: Uri = Uri.parse(videoList[video_counter].video)
-                                            val mediaItem: MediaItem = MediaItem.fromUri(videoUri)
-                                            val httpDataSourceFactory = DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true)
-                                            val defaultDataSourceFactory: DataSource.Factory = DefaultDataSourceFactory(applicationContext, httpDataSourceFactory)
-                                            val cacheDataSourceFactory = CacheDataSource.Factory()
-                                                .setCache(App.simpleCache)
-                                                .setUpstreamDataSourceFactory(defaultDataSourceFactory)
-                                                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-                                            val mediaSource: MediaSource = ProgressiveMediaSource.Factory(cacheDataSourceFactory).createMediaSource(mediaItem)
-                                            mPlayer!!.setMediaSource(mediaSource, true)
-                                            mPlayer!!.prepare()
-                                        }
-                                    }
-                                } else if (state == Player.STATE_READY) {
-                                    isVideoEnded = false
-                                }
-                            }
-                        })
+                        lin_video!!.visibility = View.GONE
+                        playerView!!.visibility = View.VISIBLE
+                        startVideoPlayback()
                     }
 
                 } else {
@@ -917,7 +916,6 @@ class HomeActivity1 : AppCompatActivity() {
     }
 
     private fun getCountersDetails(type: String) {
-        currentIndex = 0
         val mAPIService = RetrofitClient.ApiUtils.apiService1
         mAPIService.getHome(type).enqueue(object : Callback<ResponseBody> {
             override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
@@ -979,11 +977,39 @@ class HomeActivity1 : AppCompatActivity() {
         })
     }
 
+    private fun updateCounterTokenOnUi(counterId: String, tokenNumber: String, bookingId: String? = null) {
+        if (counterId.isEmpty() || counterId == "-1") return
+
+        val listIndex = countersList.indexOfFirst { it.counter_id == counterId }
+        if (listIndex >= 0) {
+            val current = countersList[listIndex]
+            countersList[listIndex] = current.copy(
+                token = tokenNumber,
+                booking_id = bookingId ?: current.booking_id
+            )
+            paginatedCounters = countersList.chunked(pagecounterSize)
+        }
+
+        if (::counterAdapter.isInitialized && recyclerViewCounter?.adapter != null) {
+            counterAdapter.updateTokenForCounter(counterId, tokenNumber)
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         type = baseClass.getSharedPreferance(this@HomeActivity1, "type", "")
-        mPlayer = SimpleExoPlayer.Builder(this@HomeActivity1).build()
-        println(type)
+        if (!::mPlayer.isInitialized) {
+            mPlayer = SimpleExoPlayer.Builder(this@HomeActivity1).build()
+            attachVideoPlayerListener()
+        }
+        playerView.player = mPlayer
+        if (videoList.isNotEmpty()) {
+            if (mPlayer.mediaItemCount == 0) {
+                startVideoPlayback()
+            } else {
+                mPlayer.playWhenReady = true
+            }
+        }
         if (doctor_selected_or_unselected == true) {
             getDoctorDetails(type!!)
         }
@@ -997,6 +1023,10 @@ class HomeActivity1 : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        releasePlayer()
+        if (::announcementQueue.isInitialized) {
+            announcementQueue.shutdown()
+        }
         if (::tts.isInitialized) {
             tts.stop()
             tts.shutdown()
@@ -1028,116 +1058,16 @@ class HomeActivity1 : AppCompatActivity() {
     }
 
     private fun convertTextToSpeech(token_number: String, room_number: String, doctor_id: String) {
-        var mAPIService: APIService? = null
-        mAPIService = RetrofitClient.ApiUtils.apiService1
-        mAPIService.convertTextToSpeech(token_number, room_number, doctor_id)
-            .enqueue(object : Callback<ResponseBody> {
-                override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
-                    if (response.isSuccessful) {
-                        val audioBytes = response.body()?.bytes()
-                        if (audioBytes != null) {
-                            if (isPlayerPlayingWithSound(this@HomeActivity1, mPlayer)) {
-                                mPlayer.pause()
-                            }
-                            val tempMp3 = File.createTempFile("audio", ".mp3", cacheDir)
-                            val fos = FileOutputStream(tempMp3)
-                            fos.write(audioBytes)
-                            fos.close()
-                            mediaPlayer = MediaPlayer().apply {
-                                setDataSource(tempMp3.absolutePath)
-                                prepare()
-                                start()
-                                setOnCompletionListener {
-                                    release()
-                                    mPlayer.play()
-                                }
-                            }
-                        }
-                    } else {
-                        if (response.code() == 400) {
-                            val jsonObject = JSONObject(response.errorBody()!!.string())
-                            val message: String = jsonObject.getString("message")
-                        }
-                    }
-                }
-                override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
-                }
-            })
+        announcementQueue.enqueueDoctorToken(token_number, room_number, doctor_id)
     }
 
     private fun convertTokenTextToSpeech(token_number: String, counter_id: String, booking_id: String) {
-        var mAPIService: APIService? = null
-        mAPIService = RetrofitClient.ApiUtils.apiService1
-        mAPIService.convertTokenTextToSpeech(token_number, counter_id, booking_id)
-            .enqueue(object : Callback<ResponseBody> {
-                override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
-                    if (response.isSuccessful) {
-                        val audioBytes = response.body()?.bytes()
-                        if (audioBytes != null) {
-                            if (isPlayerPlayingWithSound(this@HomeActivity1, mPlayer)) {
-                                mPlayer.pause()
-                            }
-                            val tempMp3 = File.createTempFile("audio", ".mp3", cacheDir)
-                            val fos = FileOutputStream(tempMp3)
-                            fos.write(audioBytes)
-                            fos.close()
-                            mediaPlayer = MediaPlayer().apply {
-                                setDataSource(tempMp3.absolutePath)
-                                prepare()
-                                start()
-                                setOnCompletionListener {
-                                    release()
-                                    mPlayer.play()
-                                }
-                            }
-                        }
-                    } else {
-                        if (response.code() == 400) {
-                            val jsonObject = JSONObject(response.errorBody()!!.string())
-                            val message: String = jsonObject.getString("message")
-                        }
-                    }
-                }
-
-                override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
-                }
-            })
+        announcementQueue.enqueueCounterToken(token_number, counter_id, booking_id)
     }
 
     private fun convertOutsourceTokenTextToSpeech(outsource_call_id: String, counter_id: String, token_number: String) {
         Log.d("DEBUG_API", "Outsource ID: $outsource_call_id, Counter: $counter_id, Token: $token_number")
-        var mAPIService: APIService? = null
-        mAPIService = RetrofitClient.ApiUtils.apiService1
-        mAPIService.convertOutsourceTokenTextToSpeech(outsource_call_id, counter_id, token_number)
-            .enqueue(object : Callback<ResponseBody> {
-                override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
-                    if (response.isSuccessful) {
-                        val audioBytes = response.body()?.bytes()
-                        if (audioBytes != null) {
-                            if (isPlayerPlayingWithSound(this@HomeActivity1, mPlayer)) {
-                                mPlayer.pause()
-                            }
-                            val tempMp3 = File.createTempFile("audio_outsource", ".mp3", cacheDir)
-                            val fos = FileOutputStream(tempMp3)
-                            fos.write(audioBytes)
-                            fos.close()
-                            mediaPlayer = MediaPlayer().apply {
-                                setDataSource(tempMp3.absolutePath)
-                                prepare()
-                                start()
-                                setOnCompletionListener {
-                                    release()
-                                    mPlayer.play()
-                                }
-                            }
-                        }
-                    }
-                }
-
-                override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
-                    Log.e("DEBUG_API", "Outsource TTS API Fail: ${t.message}")
-                }
-            })
+        announcementQueue.enqueueOutsourceToken(outsource_call_id, counter_id, token_number)
     }
 
     fun getDailyAppDataUsage(context: Context): Long {

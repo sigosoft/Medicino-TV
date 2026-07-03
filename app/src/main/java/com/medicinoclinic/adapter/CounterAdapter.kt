@@ -1,22 +1,30 @@
 package com.medicinoclinic.adapter
 
 import android.content.Intent
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
-import androidx.appcompat.widget.AppCompatTextView
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.medicinoclinic.R
 import com.medicinoclinic.SettingsActivity
 import com.medicinoclinic.model.CounterListingModel
+import com.medicinoclinic.utils.CounterScrollTextView
 
-class CounterAdapter(private var mList: List<CounterListingModel>) : RecyclerView.Adapter<CounterAdapter.ViewHolder>() {
+class CounterAdapter(private var mList: List<CounterListingModel>) :
+    RecyclerView.Adapter<CounterAdapter.ViewHolder>() {
+
+    init {
+        setHasStableIds(true)
+    }
+
+    override fun getItemId(position: Int): Long {
+        return mList[position].counter_id.hashCode().toLong()
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val layoutInflater = LayoutInflater.from(parent.context)
-        // Determine the correct layout based on the item count
         val view: View = when {
             mList.size <= 2 -> layoutInflater.inflate(R.layout.item_counter1, parent, false)
             mList.size == 3 -> layoutInflater.inflate(R.layout.item_counter2, parent, false)
@@ -29,90 +37,92 @@ class CounterAdapter(private var mList: List<CounterListingModel>) : RecyclerVie
         return ViewHolder(view)
     }
 
+    override fun onBindViewHolder(holder: ViewHolder, position: Int, payloads: MutableList<Any>) {
+        if (payloads.contains(PAYLOAD_TOKEN)) {
+            bindToken(holder, mList[position])
+            return
+        }
+        onBindViewHolder(holder, position)
+    }
+
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val counter = mList[position]
+        holder.tvCounterName.setScrollingText(counter.counter_name)
+        bindToken(holder, counter)
 
-        // --- Marquee logic is now split for performance ---
-        // 1. Set the text for the counter name
-        holder.tvCounterName.text = counter.counter_name
-
-        // 2. Conditionally enable the marquee based on text length.
-        // This is a fast operation and is safe to do in onBindViewHolder.
-        holder.tvCounterName.isSelected = counter.counter_name.length > 7
-
-        // Simplified and safer way to handle the token text
-        val tokenText = counter.token?.trim()
-        if (tokenText.isNullOrEmpty() || tokenText.equals("null", ignoreCase = true)) {
-            holder.tv_token.text = "0"
-        } else {
-            holder.tv_token.text = tokenText
-        }
-
-        // Click listener for navigation
         holder.itemView.setOnClickListener { view ->
-            // The isFocusable check here is redundant since you set it in onCreateViewHolder.
-            // It's safe to keep, but not strictly necessary.
             view.context.startActivity(Intent(view.context, SettingsActivity::class.java))
         }
-
-        // An empty focus change listener is not usually needed unless you want to override default behavior.
-        // holder.itemView.setOnFocusChangeListener { _, _ -> }
     }
 
     override fun getItemCount(): Int = mList.size
 
-    /**
-     * ViewHolder for the counter items.
-     * The init block handles one-time setup for views to improve performance.
-     */
-    class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        val tvCounterName: TextView = itemView.findViewById(R.id.tv_name)
-        val tv_token: TextView = itemView.findViewById(R.id.tv_token)
-
-        // This init block runs only ONCE when a new ViewHolder is created
-        init {
-            // Set the marquee speed once and for all for this TextView instance.
-            // This avoids doing slow reflection during every scroll.
-            setMarqueeSpeed(tvCounterName, 20f)
+    private fun bindToken(holder: ViewHolder, counter: CounterListingModel) {
+        val tokenText = counter.token.trim()
+        val displayToken = when {
+            tokenText.isEmpty() || tokenText.equals("null", ignoreCase = true) -> "0"
+            else -> tokenText
         }
+        if (holder.tv_token.text?.toString() == displayToken) return
 
-        /**
-         * Sets the scrolling speed of a TextView's marquee using reflection.
-         * This is a private helper function, encapsulated within the ViewHolder.
-         */
-        private fun setMarqueeSpeed(tv: TextView, speed: Float) {
-            try {
-                val field = if (tv is AppCompatTextView) {
-                    // For AppCompatTextView, marquee is in the superclass
-                    tv.javaClass.superclass?.getDeclaredField("mMarquee")
-                } else {
-                    tv.javaClass.getDeclaredField("mMarquee")
-                }
-                field?.let {
-                    it.isAccessible = true
-                    val marquee = it[tv]
-                    if (marquee != null) {
-                        val scrollSpeedFieldName = "mPixelsPerSecond"
-                        val speedField = marquee.javaClass.getDeclaredField(scrollSpeedFieldName)
-                        speedField.isAccessible = true
-                        speedField.setFloat(marquee, speed)
-                    }
-                }
-            } catch (e: Exception) {
-                // Log the exception to help with debugging if it ever fails
-                Log.e("CounterAdapter", "Failed to set marquee speed via reflection.", e)
-            }
+        val row = holder.itemView as ViewGroup
+        row.suppressLayout(true)
+        try {
+            holder.tv_token.text = displayToken
+        } finally {
+            row.suppressLayout(false)
         }
     }
 
-    /**
-     * Updates the list of counters and notifies the adapter to refresh the UI.
-     */
     fun setCounters(newList: List<CounterListingModel>) {
+        val diffResult = DiffUtil.calculateDiff(CounterDiffCallback(mList, newList))
         mList = newList
-        notifyDataSetChanged()
+        diffResult.dispatchUpdatesTo(this)
     }
 
-    // The global setMarqueeSpeed function is no longer needed here as it's
-    // now a private part of the ViewHolder's implementation.
+    fun updateTokenForCounter(counterId: String, newToken: String) {
+        val index = mList.indexOfFirst { it.counter_id == counterId }
+        if (index < 0) return
+
+        val current = mList[index]
+        if (current.token.trim() == newToken.trim()) return
+
+        val updatedList = mList.toMutableList()
+        updatedList[index] = current.copy(token = newToken)
+        mList = updatedList
+        notifyItemChanged(index, PAYLOAD_TOKEN)
+    }
+
+    class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        val tvCounterName: CounterScrollTextView = itemView.findViewById(R.id.tv_name)
+        val tv_token: TextView = itemView.findViewById(R.id.tv_token)
+    }
+
+    private class CounterDiffCallback(
+        private val oldList: List<CounterListingModel>,
+        private val newList: List<CounterListingModel>
+    ) : DiffUtil.Callback() {
+
+        override fun getOldListSize(): Int = oldList.size
+
+        override fun getNewListSize(): Int = newList.size
+
+        override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+            return oldList[oldItemPosition].counter_id == newList[newItemPosition].counter_id
+        }
+
+        override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+            return oldList[oldItemPosition] == newList[newItemPosition]
+        }
+
+        override fun getChangePayload(oldItemPosition: Int, newItemPosition: Int): Any? {
+            val old = oldList[oldItemPosition]
+            val new = newList[newItemPosition]
+            return if (old.counter_name == new.counter_name) PAYLOAD_TOKEN else null
+        }
+    }
+
+    companion object {
+        private const val PAYLOAD_TOKEN = "payload_token"
+    }
 }
