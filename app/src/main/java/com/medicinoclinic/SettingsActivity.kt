@@ -159,22 +159,33 @@ class SettingsActivity :  FragmentActivity() {
                         baseClass.setSharedPreferance(applicationContext,"login_status","false")
                         baseClass.setSharedPreferance(applicationContext,"date","");
                         baseClass.setSharedPreferance(applicationContext,"apiCall","false");
+                        baseClass.setSharedPreferance(applicationContext,"token","");
+                        baseClass.setSharedPreferance(applicationContext,"clinic_id","");
+                        baseClass.setSharedPreferance(applicationContext,"doctor_id","");
+                        baseClass.setSharedPreferance(applicationContext,"lab_id","");
+                        baseClass.setSharedPreferance(applicationContext,"pharmacy_id","");
+                        baseClass.setSharedPreferance(applicationContext,"type","");
+                        baseClass.setSharedPreferance(applicationContext,"token_management_type","");
 
                         if(type.equals("1")) {
                             val intent = Intent(applicationContext, ClinicLoginActivity::class.java)
+                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                             startActivity(intent)
                             finish()
                         }else if(type.equals("2")) {
                             val intent = Intent(applicationContext, DoctorLoginActivity::class.java)
+                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                             startActivity(intent)
                             finish()
                         }else if(type.equals("3")) {
                             val intent = Intent(applicationContext, LabLoginActivity::class.java)
+                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                             startActivity(intent)
                             finish()
                         }
                         else {
                             val intent = Intent(applicationContext, PharmacyLoginActivity::class.java)
+                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                             startActivity(intent)
                             finish()
                         }

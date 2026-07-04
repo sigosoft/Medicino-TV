@@ -2,6 +2,8 @@ package com.medicinoclinic.utils
 
 import android.content.Context
 import android.media.MediaPlayer
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.medicinoclinic.retrofit.APIService
 import okhttp3.ResponseBody
@@ -10,11 +12,13 @@ import retrofit2.Callback
 import retrofit2.Response
 import java.io.File
 import java.io.FileOutputStream
-import java.util.ArrayDeque
+import java.util.LinkedList
 
 class TokenAnnouncementQueue(
     private val context: Context,
-    private val apiService: APIService
+    private val apiService: APIService,
+    private val onAnnouncementStart: (() -> Unit)? = null,
+    private val onAllAnnouncementsFinished: (() -> Unit)? = null
 ) {
 
     private sealed class Request {
@@ -37,30 +41,48 @@ class TokenAnnouncementQueue(
         ) : Request()
     }
 
-    private val queue = ArrayDeque<Request>()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val lock = Any()
+    private val queue = LinkedList<Request>()
     private var mediaPlayer: MediaPlayer? = null
-    private var isProcessing = false
+    private var isPlaying = false
+    private var videoPaused = false
 
     fun enqueueDoctorToken(tokenNumber: String, roomNumber: String, doctorId: String) {
-        queue.addLast(Request.Doctor(tokenNumber, roomNumber, doctorId))
-        processNext()
+        synchronized(lock) {
+            queue.add(Request.Doctor(tokenNumber, roomNumber, doctorId))
+        }
+        mainHandler.post { processNext() }
     }
 
     fun enqueueCounterToken(tokenNumber: String, counterId: String, bookingId: String) {
-        queue.addLast(Request.Counter(tokenNumber, counterId, bookingId))
-        processNext()
+        synchronized(lock) {
+            queue.add(Request.Counter(tokenNumber, counterId, bookingId))
+        }
+        mainHandler.post { processNext() }
     }
 
     fun enqueueOutsourceToken(outsourceCallId: String, counterId: String, tokenNumber: String) {
-        queue.addLast(Request.Outsource(outsourceCallId, counterId, tokenNumber))
-        processNext()
+        synchronized(lock) {
+            queue.add(Request.Outsource(outsourceCallId, counterId, tokenNumber))
+        }
+        mainHandler.post { processNext() }
     }
 
     private fun processNext() {
-        if (isProcessing || queue.isEmpty()) return
+        val request: Request
+        synchronized(lock) {
+            if (isPlaying || queue.isEmpty()) return
+            isPlaying = true
+            request = queue.removeFirst()
+        }
 
-        isProcessing = true
-        when (val request = queue.removeFirst()) {
+        if (!videoPaused) {
+            videoPaused = true
+            onAnnouncementStart?.invoke()
+        }
+
+        when (request) {
             is Request.Doctor -> fetchDoctorAudio(request)
             is Request.Counter -> fetchCounterAudio(request)
             is Request.Outsource -> fetchOutsourceAudio(request)
@@ -91,16 +113,16 @@ class TokenAnnouncementQueue(
                 if (response.isSuccessful) {
                     val audioBytes = response.body()?.bytes()
                     if (audioBytes != null) {
-                        playAudio(audioBytes, filePrefix)
+                        mainHandler.post { playAudio(audioBytes, filePrefix) }
                         return
                     }
                 }
-                onAnnouncementFinished()
+                mainHandler.post { onAnnouncementFinished() }
             }
 
             override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
                 Log.e(TAG, "Announcement API failed: ${t.message}")
-                onAnnouncementFinished()
+                mainHandler.post { onAnnouncementFinished() }
             }
         }
     }
@@ -116,9 +138,7 @@ class TokenAnnouncementQueue(
                 prepare()
                 start()
                 setOnCompletionListener {
-                    release()
-                    mediaPlayer = null
-                    onAnnouncementFinished()
+                    mainHandler.post { onAnnouncementFinished() }
                 }
             }
         } catch (e: Exception) {
@@ -128,20 +148,36 @@ class TokenAnnouncementQueue(
     }
 
     private fun onAnnouncementFinished() {
-        isProcessing = false
+        releasePlayer()
+        synchronized(lock) {
+            isPlaying = false
+        }
+        if (queue.isEmpty() && videoPaused) {
+            videoPaused = false
+            onAnnouncementStart?.let { onAllAnnouncementsFinished?.invoke() }
+        }
         processNext()
     }
 
     private fun releasePlayer() {
         mediaPlayer?.setOnCompletionListener(null)
+        try {
+            mediaPlayer?.stop()
+        } catch (_: Exception) {}
         mediaPlayer?.release()
         mediaPlayer = null
     }
 
     fun shutdown() {
-        queue.clear()
+        synchronized(lock) {
+            queue.clear()
+            isPlaying = false
+        }
         releasePlayer()
-        isProcessing = false
+        if (videoPaused) {
+            videoPaused = false
+            onAllAnnouncementsFinished?.invoke()
+        }
     }
 
     companion object {

@@ -194,7 +194,9 @@ class HomeActivity1 : AppCompatActivity() {
 
         announcementQueue = TokenAnnouncementQueue(
             context = this,
-            apiService = RetrofitClient.ApiUtils.apiService1
+            apiService = RetrofitClient.ApiUtils.apiService1,
+            onAnnouncementStart = { if (::mPlayer.isInitialized) mPlayer.pause() },
+            onAllAnnouncementsFinished = { if (::mPlayer.isInitialized) mPlayer.play() }
         )
 
         Log.e("Token....", token.toString())
@@ -216,9 +218,9 @@ class HomeActivity1 : AppCompatActivity() {
         options.setCluster("ap2")
 
         // dev
-         pusher = Pusher("e8a2220b4c88b31f047b", options)
+        // pusher = Pusher("e8a2220b4c88b31f047b", options)
         // live key
-        // pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
+         pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
 
         pusher.connect(object : ConnectionEventListener {
             override fun onConnectionStateChange(change: ConnectionStateChange) {
@@ -231,9 +233,9 @@ class HomeActivity1 : AppCompatActivity() {
         }, ConnectionState.ALL)
 
         // dev channel
-         val channel: Channel = pusher.subscribe("medicino-tv-stagging")
+        // val channel: Channel = pusher.subscribe("medicino-tv-stagging")
         // live channel
-        // val channel: Channel = pusher.subscribe("medicino-tv-live")
+         val channel: Channel = pusher.subscribe("medicino-tv-live")
 
         channel.bind("token-called") { event ->
             Log.d("PUSHER_DEBUG", "--------------------")
@@ -254,8 +256,9 @@ class HomeActivity1 : AppCompatActivity() {
                         if (type.equals("1")) {
                             clinicId = jsonObject.getInt("clinic_id")
                         }
-                        val tokenNumber = jsonObject.getString("token_number")
-                        val roomNumber = jsonObject.getString("room_number")
+                        val tokenNumber = jsonObject.optString("token_number", "")
+                        val roomNumber = jsonObject.optString("room_number", "")
+                        if (tokenNumber.isNullOrEmpty() || tokenNumber == "null") return@runOnUiThread
                         if ((type.equals("1") && logged_clinic_id.equals(clinicId.toString())) ||
                             (type.equals("2") && doctorId.toString().equals(logged_doctor_id))
                         ) {
@@ -277,6 +280,7 @@ class HomeActivity1 : AppCompatActivity() {
                             val counterId = jsonObject2.optInt("counter_id", -1)
                             val tokenNumber = jsonObject2.optString("token_number", "")
                             val booking_id = jsonObject2.optInt("counter_booking_id", 0)
+                            if (tokenNumber.isNullOrEmpty() || tokenNumber == "null") return@runOnUiThread
                             if ((type.equals("3") && logged_lab_id.equals(lab_id.toString())) ||
                                 (type.equals("4") && pharmacy_id.toString().equals(logged_pharmacy_id))
                             ) {
@@ -316,6 +320,7 @@ class HomeActivity1 : AppCompatActivity() {
                     val outsource_call_id = jsonObject.optString("outsource_call_id", "")
                     val counterId = jsonObject.optString("counter_id", "")
                     val tokenNumber = jsonObject.optString("token_number", "")
+                    if (tokenNumber.isNullOrEmpty() || tokenNumber == "null") return@runOnUiThread
                     val lab_id = jsonObject.optInt("lab_id", -1)
                     val pharmacy_id = jsonObject.optInt("pharmacy_id", -1)
 
