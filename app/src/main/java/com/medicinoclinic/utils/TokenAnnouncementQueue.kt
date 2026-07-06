@@ -1,6 +1,7 @@
 package com.medicinoclinic.utils
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.os.Handler
 import android.os.Looper
@@ -49,24 +50,32 @@ class TokenAnnouncementQueue(
     private var videoPaused = false
 
     fun enqueueDoctorToken(tokenNumber: String, roomNumber: String, doctorId: String) {
-        synchronized(lock) {
-            queue.add(Request.Doctor(tokenNumber, roomNumber, doctorId))
-        }
-        mainHandler.post { processNext() }
+        enqueue(Request.Doctor(tokenNumber, roomNumber, doctorId))
     }
 
     fun enqueueCounterToken(tokenNumber: String, counterId: String, bookingId: String) {
-        synchronized(lock) {
-            queue.add(Request.Counter(tokenNumber, counterId, bookingId))
-        }
-        mainHandler.post { processNext() }
+        enqueue(Request.Counter(tokenNumber, counterId, bookingId))
     }
 
     fun enqueueOutsourceToken(outsourceCallId: String, counterId: String, tokenNumber: String) {
+        enqueue(Request.Outsource(outsourceCallId, counterId, tokenNumber))
+    }
+
+    private fun enqueue(request: Request) {
         synchronized(lock) {
-            queue.add(Request.Outsource(outsourceCallId, counterId, tokenNumber))
+            queue.add(request)
         }
-        mainHandler.post { processNext() }
+        mainHandler.post {
+            pauseVideoIfNeeded()
+            processNext()
+        }
+    }
+
+    private fun pauseVideoIfNeeded() {
+        if (!videoPaused) {
+            videoPaused = true
+            onAnnouncementStart?.invoke()
+        }
     }
 
     private fun processNext() {
@@ -75,11 +84,6 @@ class TokenAnnouncementQueue(
             if (isPlaying || queue.isEmpty()) return
             isPlaying = true
             request = queue.removeFirst()
-        }
-
-        if (!videoPaused) {
-            videoPaused = true
-            onAnnouncementStart?.invoke()
         }
 
         when (request) {
@@ -134,10 +138,17 @@ class TokenAnnouncementQueue(
 
             releasePlayer()
             mediaPlayer = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
                 setDataSource(tempMp3.absolutePath)
                 prepare()
                 start()
                 setOnCompletionListener {
+                    tempMp3.delete()
                     mainHandler.post { onAnnouncementFinished() }
                 }
             }
@@ -152,9 +163,10 @@ class TokenAnnouncementQueue(
         synchronized(lock) {
             isPlaying = false
         }
-        if (queue.isEmpty() && videoPaused) {
+        val shouldResumeVideo = synchronized(lock) { queue.isEmpty() } && videoPaused
+        if (shouldResumeVideo) {
             videoPaused = false
-            onAnnouncementStart?.let { onAllAnnouncementsFinished?.invoke() }
+            onAllAnnouncementsFinished?.invoke()
         }
         processNext()
     }

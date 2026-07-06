@@ -68,11 +68,11 @@ object RetrofitClient {
 //         val VIDEO_URL = "https://services.dev.medicinohealthtech.in/storage/"
 
         val BASE_URL =
-         //   "https://staging.medicino.in/"
-          "https://api.brightideainfotech.tech/"
+            "https://staging.medicino.in/"
+         // "https://api.brightideainfotech.tech/"
         val VIDEO_URL =
-           // "https://staging.medicino.in/storage/"
-            "https://api.brightideainfotech.tech/storage/"
+            "https://staging.medicino.in/storage/"
+        // "https://api.brightideainfotech.tech/storage/"
 
         val apiService: APIService
             get() = RetrofitClient.getClient(BASE_URL)!!.create(APIService::class.java)

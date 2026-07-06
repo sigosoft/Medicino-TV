@@ -36,8 +36,11 @@
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rv_counters"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="0dp"
+                android:layout_weight="1"
                 android:descendantFocusability="afterDescendants"
+                android:nestedScrollingEnabled="false"
+                android:overScrollMode="never"
                 android:visibility="gone" />
 
             <Button

@@ -129,6 +129,8 @@ class HomeActivity1 : AppCompatActivity() {
     var data_usage: String = "0 B"
     private var videoPlayerListener: Player.Listener? = null
     private lateinit var announcementQueue: TokenAnnouncementQueue
+    private var videoVolumeBeforeAnnouncement = 0.1f
+    private var isVideoPausedForAnnouncement = false
 
     private var paginatedDoctors: List<List<DoctorListingModel>> = listOf()
     private var currentPage = 0
@@ -195,8 +197,8 @@ class HomeActivity1 : AppCompatActivity() {
         announcementQueue = TokenAnnouncementQueue(
             context = this,
             apiService = RetrofitClient.ApiUtils.apiService1,
-            onAnnouncementStart = { if (::mPlayer.isInitialized) mPlayer.pause() },
-            onAllAnnouncementsFinished = { if (::mPlayer.isInitialized) mPlayer.play() }
+            onAnnouncementStart = { pauseVideoForAnnouncement() },
+            onAllAnnouncementsFinished = { resumeVideoAfterAnnouncement() }
         )
 
         Log.e("Token....", token.toString())
@@ -218,9 +220,9 @@ class HomeActivity1 : AppCompatActivity() {
         options.setCluster("ap2")
 
         // dev
-        // pusher = Pusher("e8a2220b4c88b31f047b", options)
+         pusher = Pusher("e8a2220b4c88b31f047b", options)
         // live key
-         pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
+        // pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
 
         pusher.connect(object : ConnectionEventListener {
             override fun onConnectionStateChange(change: ConnectionStateChange) {
@@ -233,9 +235,9 @@ class HomeActivity1 : AppCompatActivity() {
         }, ConnectionState.ALL)
 
         // dev channel
-        // val channel: Channel = pusher.subscribe("medicino-tv-stagging")
+         val channel: Channel = pusher.subscribe("medicino-tv-stagging")
         // live channel
-         val channel: Channel = pusher.subscribe("medicino-tv-live")
+        // val channel: Channel = pusher.subscribe("medicino-tv-live")
 
         channel.bind("token-called") { event ->
             Log.d("PUSHER_DEBUG", "--------------------")
@@ -449,7 +451,9 @@ class HomeActivity1 : AppCompatActivity() {
                     mPlayer.seekTo(0, 0)
                 }
                 mPlayer.prepare()
-                mPlayer.playWhenReady = true
+                if (!isVideoPausedForAnnouncement) {
+                    mPlayer.playWhenReady = true
+                }
             }
         }
         mPlayer.addListener(videoPlayerListener!!)
@@ -476,7 +480,9 @@ class HomeActivity1 : AppCompatActivity() {
         mPlayer.setMediaSources(mediaSources, true)
         mPlayer.repeatMode = Player.REPEAT_MODE_ALL
         mPlayer.volume = 0.1f
-        mPlayer.playWhenReady = true
+        if (!isVideoPausedForAnnouncement) {
+            mPlayer.playWhenReady = true
+        }
         mPlayer.prepare()
         video_counter = 0
     }
@@ -492,6 +498,7 @@ class HomeActivity1 : AppCompatActivity() {
                     contents.clear()
                     videoList.clear()
                     doctorsList.clear()
+                    countersList.clear()
 
                     var response_from_server = response.body()!!.string()
                     var jsonObject: JSONObject? = null
@@ -589,47 +596,8 @@ class HomeActivity1 : AppCompatActivity() {
                         }
                     }
 
-                    if (jsonArray_counter_tokens.length() > 0) {
-                        for (k in 0 until jsonArray_counter_tokens.length()) {
-                            val jObjCounters = jsonArray_counter_tokens.getJSONObject(k)
-                            val counter_id = jObjCounters.getString("counter_id")
-                            val token = jObjCounters.getString("token")
-                            val call_status = jObjCounters.getString("call_status")
-                            val counter_name = jObjCounters.getString("counter_name")
-                            val booking_id = jObjCounters.getString("booking_id")
-                            countersList.add(CounterListingModel(counter_id, token, call_status, counter_name, booking_id))
-                        }
-
-                        if (countersList.isNotEmpty()) {
-                            recyclerViewCounter?.isVisible = true
-                            btn_settings?.isVisible = false
-                            recyclerViewCounter?.layoutManager = LinearLayoutManager(this@HomeActivity1)
-
-                            if (recyclerViewCounter?.adapter == null) {
-                                counterAdapter = CounterAdapter(listOf())
-                                recyclerViewCounter?.adapter = counterAdapter
-                            } else {
-                                counterAdapter = recyclerViewCounter?.adapter as CounterAdapter
-                            }
-
-                            paginatedCounters = countersList.chunked(pagecounterSize)
-
-                            if (paginatedCounters.isNotEmpty()) {
-                                handler.removeCallbacksAndMessages(null)
-                                if (currentPage >= paginatedCounters.size) currentPage = 0
-                                counterAdapter.setCounters(paginatedCounters[currentPage])
-                                handler.postDelayed({ updateCountersListPage() }, 15_000)
-                            }
-                        } else {
-                            recyclerViewCounter?.isVisible = false
-                            btn_settings?.isVisible = true
-                        }
-                    } else {
-                        if (type.equals("3") || type.equals("4")) {
-                            recyclerViewCounter?.isVisible = false
-                            btn_settings?.isVisible = true
-                        }
-                    }
+                    countersList.addAll(parseCountersFromJson(jsonArray_counter_tokens))
+                    displayCountersOnUi()
 
                     if (jsonArray_tvShows.length() > 0) {
                         for (i in 0 until jsonArray_tvShows.length()) {
@@ -931,44 +899,8 @@ class HomeActivity1 : AppCompatActivity() {
                     val jObjData = jsonObject.getJSONObject("data")
                     val jsonArray_counter_tokens = jObjData.getJSONArray("counter_tokens")
 
-                    if (jsonArray_counter_tokens.length() > 0) {
-                        for (k in 0 until jsonArray_counter_tokens.length()) {
-                            val jObjCounters = jsonArray_counter_tokens.getJSONObject(k)
-                            val counter_id = jObjCounters.getString("counter_id")
-                            val token = jObjCounters.getString("token")
-                            val call_status = jObjCounters.getString("call_status")
-                            val counter_name = jObjCounters.getString("counter_name")
-                            val booking_id = jObjCounters.getString("booking_id")
-                            countersList.add(CounterListingModel(counter_id, token, call_status, counter_name, booking_id))
-                        }
-
-                        if (countersList.isNotEmpty()) {
-                            recyclerViewCounter?.isVisible = true
-                            btn_settings?.isVisible = false
-                            recyclerViewCounter?.layoutManager = LinearLayoutManager(this@HomeActivity1)
-
-                            if (recyclerViewCounter?.adapter == null) {
-                                counterAdapter = CounterAdapter(listOf())
-                                recyclerViewCounter?.adapter = counterAdapter
-                            } else {
-                                counterAdapter = recyclerViewCounter?.adapter as CounterAdapter
-                            }
-
-                            paginatedCounters = countersList.chunked(pagecounterSize)
-
-                            if (paginatedCounters.isNotEmpty()) {
-                                handler.removeCallbacksAndMessages(null)
-                                if (currentPage >= paginatedCounters.size) currentPage = 0
-                                counterAdapter.setCounters(paginatedCounters[currentPage])
-                                handler.postDelayed({ updateCountersListPage() }, 15_000)
-                            }
-                        } else {
-                            if (type.equals("3") || type.equals("4")) {
-                                recyclerViewCounter?.isVisible = false
-                                btn_settings?.isVisible = true
-                            }
-                        }
-                    }
+                    countersList.addAll(parseCountersFromJson(jsonArray_counter_tokens))
+                    displayCountersOnUi()
                 } else {
                     when (response.code()) {
                         401 -> Toast.makeText(this@HomeActivity1, getString(R.string.unauthenticated), Toast.LENGTH_LONG).show()
@@ -980,6 +912,66 @@ class HomeActivity1 : AppCompatActivity() {
                 Toast.makeText(this@HomeActivity1, getString(R.string.response_failed), Toast.LENGTH_LONG).show()
             }
         })
+    }
+
+    private fun parseCountersFromJson(jsonArray: org.json.JSONArray): List<CounterListingModel> {
+        val seenIds = mutableSetOf<String>()
+        val counters = mutableListOf<CounterListingModel>()
+
+        for (i in 0 until jsonArray.length()) {
+            val jObj = jsonArray.getJSONObject(i)
+            val counterId = jObj.optString("counter_id", "").trim()
+            if (counterId.isEmpty() || counterId.equals("null", ignoreCase = true) || counterId == "-1") {
+                continue
+            }
+            if (!seenIds.add(counterId)) {
+                continue
+            }
+
+            counters.add(
+                CounterListingModel(
+                    counterId,
+                    jObj.optString("token", ""),
+                    jObj.optString("call_status", ""),
+                    jObj.optString("counter_name", ""),
+                    jObj.optString("booking_id", "")
+                )
+            )
+        }
+        return counters
+    }
+
+    private fun displayCountersOnUi() {
+        if (countersList.isEmpty()) {
+            recyclerViewCounter?.isVisible = false
+            if (type == "3" || type == "4") {
+                btn_settings?.isVisible = true
+            }
+            return
+        }
+
+        recyclerViewCounter?.isVisible = true
+        recyclerViewDoctor?.isVisible = false
+        btn_settings?.isVisible = false
+        recyclerViewCounter?.layoutManager = LinearLayoutManager(this)
+
+        if (recyclerViewCounter?.adapter == null) {
+            counterAdapter = CounterAdapter()
+            recyclerViewCounter?.adapter = counterAdapter
+        } else {
+            counterAdapter = recyclerViewCounter?.adapter as CounterAdapter
+        }
+
+        paginatedCounters = countersList.chunked(pagecounterSize)
+        handler.removeCallbacksAndMessages(null)
+        if (currentPage >= paginatedCounters.size) currentPage = 0
+
+        if (paginatedCounters.isNotEmpty()) {
+            counterAdapter.setCounters(paginatedCounters[currentPage])
+            if (paginatedCounters.size > 1) {
+                handler.postDelayed({ updateCountersListPage() }, 15_000)
+            }
+        }
     }
 
     private fun updateCounterTokenOnUi(counterId: String, tokenNumber: String, bookingId: String? = null) {
@@ -1011,7 +1003,7 @@ class HomeActivity1 : AppCompatActivity() {
         if (videoList.isNotEmpty()) {
             if (mPlayer.mediaItemCount == 0) {
                 startVideoPlayback()
-            } else {
+            } else if (!isVideoPausedForAnnouncement) {
                 mPlayer.playWhenReady = true
             }
         }
@@ -1019,6 +1011,22 @@ class HomeActivity1 : AppCompatActivity() {
             getDoctorDetails(type!!)
         }
         pusher.connect()
+    }
+
+    private fun pauseVideoForAnnouncement() {
+        if (!::mPlayer.isInitialized) return
+        isVideoPausedForAnnouncement = true
+        videoVolumeBeforeAnnouncement = mPlayer.volume
+        mPlayer.playWhenReady = false
+        mPlayer.pause()
+        mPlayer.volume = 0f
+    }
+
+    private fun resumeVideoAfterAnnouncement() {
+        if (!::mPlayer.isInitialized) return
+        isVideoPausedForAnnouncement = false
+        mPlayer.volume = videoVolumeBeforeAnnouncement
+        mPlayer.playWhenReady = true
     }
 
     fun isPlayerPlayingWithSound(context: Context, player: SimpleExoPlayer): Boolean {

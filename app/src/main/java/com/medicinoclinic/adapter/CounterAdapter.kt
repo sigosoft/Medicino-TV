@@ -4,6 +4,7 @@ import android.content.Intent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
@@ -12,8 +13,10 @@ import com.medicinoclinic.SettingsActivity
 import com.medicinoclinic.model.CounterListingModel
 import com.medicinoclinic.utils.CounterScrollTextView
 
-class CounterAdapter(private var mList: List<CounterListingModel>) :
+class CounterAdapter(private var mList: List<CounterListingModel> = emptyList()) :
     RecyclerView.Adapter<CounterAdapter.ViewHolder>() {
+
+    private var layoutType = resolveLayoutType(0)
 
     init {
         setHasStableIds(true)
@@ -23,15 +26,20 @@ class CounterAdapter(private var mList: List<CounterListingModel>) :
         return mList[position].counter_id.hashCode().toLong()
     }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        val layoutInflater = LayoutInflater.from(parent.context)
-        val view: View = when {
-            mList.size <= 2 -> layoutInflater.inflate(R.layout.item_counter1, parent, false)
-            mList.size == 3 -> layoutInflater.inflate(R.layout.item_counter2, parent, false)
-            mList.size == 4 -> layoutInflater.inflate(R.layout.item_counter3, parent, false)
-            else -> layoutInflater.inflate(R.layout.item_counter, parent, false)
-        }
+    override fun getItemViewType(position: Int): Int = layoutType
 
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+        val layoutRes = when (viewType) {
+            TYPE_1_2 -> R.layout.item_counter1
+            TYPE_3 -> R.layout.item_counter2
+            TYPE_4 -> R.layout.item_counter3
+            else -> R.layout.item_counter
+        }
+        val view = LayoutInflater.from(parent.context).inflate(layoutRes, parent, false)
+        view.layoutParams = RecyclerView.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
         view.isFocusable = true
         view.isFocusableInTouchMode = true
         return ViewHolder(view)
@@ -49,6 +57,7 @@ class CounterAdapter(private var mList: List<CounterListingModel>) :
         val counter = mList[position]
         holder.tvCounterName.setScrollingText(counter.counter_name)
         bindToken(holder, counter)
+        adjustItemHeight(holder)
 
         holder.itemView.setOnClickListener { view ->
             view.context.startActivity(Intent(view.context, SettingsActivity::class.java))
@@ -74,7 +83,43 @@ class CounterAdapter(private var mList: List<CounterListingModel>) :
         }
     }
 
+    private fun adjustItemHeight(holder: ViewHolder) {
+        val parent = holder.itemView.parent as? RecyclerView ?: return
+        if (parent.height > 0) {
+            applyItemHeight(holder, parent)
+            return
+        }
+        parent.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                parent.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                applyItemHeight(holder, parent)
+            }
+        })
+    }
+
+    private fun applyItemHeight(holder: ViewHolder, parent: RecyclerView) {
+        val count = itemCount
+        if (count <= 0 || parent.height <= 0) return
+
+        val itemHeight = parent.height / count
+        val lp = holder.itemView.layoutParams
+        if (lp.height != itemHeight) {
+            lp.height = itemHeight
+            holder.itemView.layoutParams = lp
+        }
+    }
+
     fun setCounters(newList: List<CounterListingModel>) {
+        val newLayoutType = resolveLayoutType(newList.size)
+        val layoutChanged = newLayoutType != layoutType
+        layoutType = newLayoutType
+
+        if (layoutChanged) {
+            mList = newList
+            notifyDataSetChanged()
+            return
+        }
+
         val diffResult = DiffUtil.calculateDiff(CounterDiffCallback(mList, newList))
         mList = newList
         diffResult.dispatchUpdatesTo(this)
@@ -124,5 +169,16 @@ class CounterAdapter(private var mList: List<CounterListingModel>) :
 
     companion object {
         private const val PAYLOAD_TOKEN = "payload_token"
+        private const val TYPE_1_2 = 0
+        private const val TYPE_3 = 1
+        private const val TYPE_4 = 2
+        private const val TYPE_DEFAULT = 3
+
+        fun resolveLayoutType(count: Int): Int = when {
+            count <= 2 -> TYPE_1_2
+            count == 3 -> TYPE_3
+            count == 4 -> TYPE_4
+            else -> TYPE_DEFAULT
+        }
     }
 }
