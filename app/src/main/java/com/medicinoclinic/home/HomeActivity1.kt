@@ -134,8 +134,11 @@ class HomeActivity1 : AppCompatActivity() {
 
     private var paginatedDoctors: List<List<DoctorListingModel>> = listOf()
     private var currentPage = 0
+    private var counterCurrentPage = 0
     private val pageSize = 4
     private val handler = Handler(Looper.getMainLooper())
+    private val doctorPageRunnable = Runnable { updateDoctorListPage() }
+    private val counterPageRunnable = Runnable { updateCountersListPage() }
     private lateinit var doctorAdapter: DoctorAdapter
 
     var countersList = arrayListOf<CounterListingModel>()
@@ -572,10 +575,10 @@ class HomeActivity1 : AppCompatActivity() {
                             paginatedDoctors = doctorsList.chunked(pageSize)
 
                             if (paginatedDoctors.isNotEmpty()) {
-                                handler.removeCallbacksAndMessages(null)
+                                handler.removeCallbacks(doctorPageRunnable)
                                 currentPage = 0
                                 doctorAdapter.setDoctors(paginatedDoctors[currentPage])
-                                handler.postDelayed({ updateDoctorListPage() }, 15_000)
+                                handler.postDelayed(doctorPageRunnable, 15_000)
                             }
                         } else {
                             recyclerViewDoctor?.isVisible = false
@@ -596,8 +599,14 @@ class HomeActivity1 : AppCompatActivity() {
                         }
                     }
 
-                    countersList.addAll(parseCountersFromJson(jsonArray_counter_tokens))
-                    displayCountersOnUi()
+                    if (jsonArray_counter_tokens.length() > 0) {
+                        bindCountersToUi(type, parseCounterTokens(jsonArray_counter_tokens))
+                    } else {
+                        if (type.equals("3") || type.equals("4")) {
+                            recyclerViewCounter?.isVisible = false
+                            btn_settings?.isVisible = true
+                        }
+                    }
 
                     if (jsonArray_tvShows.length() > 0) {
                         for (i in 0 until jsonArray_tvShows.length()) {
@@ -663,23 +672,77 @@ class HomeActivity1 : AppCompatActivity() {
     }
 
     private fun updateDoctorListPage() {
-        handler.removeCallbacksAndMessages(null)
         if (paginatedDoctors.isNotEmpty()) {
             currentPage = (currentPage + 1) % paginatedDoctors.size
             doctorAdapter.setDoctors(paginatedDoctors[currentPage])
-            handler.postDelayed({ updateDoctorListPage() }, 15_000)
+            handler.postDelayed(doctorPageRunnable, 15_000)
         }
         pusher.connect()
     }
 
     private fun updateCountersListPage() {
-        handler.removeCallbacksAndMessages(null)
         if (paginatedCounters.isNotEmpty()) {
-            currentPage = (currentPage + 1) % paginatedCounters.size
-            counterAdapter.setCounters(paginatedCounters[currentPage])
-            handler.postDelayed({ updateCountersListPage() }, 15_000)
+            counterCurrentPage = (counterCurrentPage + 1) % paginatedCounters.size
+            counterAdapter.setCounters(paginatedCounters[counterCurrentPage])
+            handler.postDelayed(counterPageRunnable, 15_000)
         }
         pusher.connect()
+    }
+
+    private fun isValidCounterId(counterId: String): Boolean {
+        return counterId.isNotBlank() &&
+            counterId != "-1" &&
+            !counterId.equals("null", ignoreCase = true)
+    }
+
+    private fun parseCounterTokens(jsonArray: org.json.JSONArray): List<CounterListingModel> {
+        val countersById = LinkedHashMap<String, CounterListingModel>()
+        for (index in 0 until jsonArray.length()) {
+            val counterObject = jsonArray.getJSONObject(index)
+            val counterId = counterObject.optString("counter_id", "").trim()
+            if (!isValidCounterId(counterId)) continue
+
+            countersById[counterId] = CounterListingModel(
+                counterId,
+                counterObject.optString("token", "").trim(),
+                counterObject.optString("call_status", "").trim(),
+                counterObject.optString("counter_name", "").trim(),
+                counterObject.optString("booking_id", "").trim()
+            )
+        }
+        return countersById.values.toList()
+    }
+
+    private fun bindCountersToUi(type: String, counters: List<CounterListingModel>) {
+        countersList.clear()
+        countersList.addAll(counters)
+
+        if (countersList.isEmpty()) {
+            recyclerViewCounter?.isVisible = false
+            if (type == "3" || type == "4") {
+                btn_settings?.isVisible = true
+            }
+            return
+        }
+
+        recyclerViewCounter?.isVisible = true
+        btn_settings?.isVisible = false
+        recyclerViewCounter?.layoutManager = LinearLayoutManager(this@HomeActivity1)
+
+        if (recyclerViewCounter?.adapter == null) {
+            counterAdapter = CounterAdapter(listOf())
+            recyclerViewCounter?.adapter = counterAdapter
+        } else {
+            counterAdapter = recyclerViewCounter?.adapter as CounterAdapter
+        }
+
+        paginatedCounters = countersList.chunked(pagecounterSize)
+        counterCurrentPage = 0
+        counterAdapter.setCounters(paginatedCounters[counterCurrentPage])
+        handler.removeCallbacks(counterPageRunnable)
+        if (paginatedCounters.size > 1) {
+            handler.postDelayed(counterPageRunnable, 15_000)
+        }
     }
 
     private fun runTvShows(show_id: String, data_usage: String) {
@@ -865,10 +928,10 @@ class HomeActivity1 : AppCompatActivity() {
                             paginatedDoctors = doctorsList.chunked(pageSize)
 
                             if (paginatedDoctors.isNotEmpty()) {
-                                handler.removeCallbacksAndMessages(null)
+                                handler.removeCallbacks(doctorPageRunnable)
                                 if (currentPage >= paginatedDoctors.size) currentPage = 0
                                 doctorAdapter.setDoctors(paginatedDoctors[currentPage])
-                                handler.postDelayed({ updateDoctorListPage() }, 15_000)
+                                handler.postDelayed(doctorPageRunnable, 15_000)
                             }
                         } else {
                             recyclerViewDoctor?.isVisible = false
@@ -893,14 +956,11 @@ class HomeActivity1 : AppCompatActivity() {
         mAPIService.getHome(type).enqueue(object : Callback<ResponseBody> {
             override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
                 if (response.isSuccessful) {
-                    countersList.clear()
                     val responseFromServer = response.body()!!.string()
                     val jsonObject = JSONObject(responseFromServer)
                     val jObjData = jsonObject.getJSONObject("data")
                     val jsonArray_counter_tokens = jObjData.getJSONArray("counter_tokens")
-
-                    countersList.addAll(parseCountersFromJson(jsonArray_counter_tokens))
-                    displayCountersOnUi()
+                    bindCountersToUi(type, parseCounterTokens(jsonArray_counter_tokens))
                 } else {
                     when (response.code()) {
                         401 -> Toast.makeText(this@HomeActivity1, getString(R.string.unauthenticated), Toast.LENGTH_LONG).show()
@@ -912,66 +972,6 @@ class HomeActivity1 : AppCompatActivity() {
                 Toast.makeText(this@HomeActivity1, getString(R.string.response_failed), Toast.LENGTH_LONG).show()
             }
         })
-    }
-
-    private fun parseCountersFromJson(jsonArray: org.json.JSONArray): List<CounterListingModel> {
-        val seenIds = mutableSetOf<String>()
-        val counters = mutableListOf<CounterListingModel>()
-
-        for (i in 0 until jsonArray.length()) {
-            val jObj = jsonArray.getJSONObject(i)
-            val counterId = jObj.optString("counter_id", "").trim()
-            if (counterId.isEmpty() || counterId.equals("null", ignoreCase = true) || counterId == "-1") {
-                continue
-            }
-            if (!seenIds.add(counterId)) {
-                continue
-            }
-
-            counters.add(
-                CounterListingModel(
-                    counterId,
-                    jObj.optString("token", ""),
-                    jObj.optString("call_status", ""),
-                    jObj.optString("counter_name", ""),
-                    jObj.optString("booking_id", "")
-                )
-            )
-        }
-        return counters
-    }
-
-    private fun displayCountersOnUi() {
-        if (countersList.isEmpty()) {
-            recyclerViewCounter?.isVisible = false
-            if (type == "3" || type == "4") {
-                btn_settings?.isVisible = true
-            }
-            return
-        }
-
-        recyclerViewCounter?.isVisible = true
-        recyclerViewDoctor?.isVisible = false
-        btn_settings?.isVisible = false
-        recyclerViewCounter?.layoutManager = LinearLayoutManager(this)
-
-        if (recyclerViewCounter?.adapter == null) {
-            counterAdapter = CounterAdapter()
-            recyclerViewCounter?.adapter = counterAdapter
-        } else {
-            counterAdapter = recyclerViewCounter?.adapter as CounterAdapter
-        }
-
-        paginatedCounters = countersList.chunked(pagecounterSize)
-        handler.removeCallbacksAndMessages(null)
-        if (currentPage >= paginatedCounters.size) currentPage = 0
-
-        if (paginatedCounters.isNotEmpty()) {
-            counterAdapter.setCounters(paginatedCounters[currentPage])
-            if (paginatedCounters.size > 1) {
-                handler.postDelayed({ updateCountersListPage() }, 15_000)
-            }
-        }
     }
 
     private fun updateCounterTokenOnUi(counterId: String, tokenNumber: String, bookingId: String? = null) {
