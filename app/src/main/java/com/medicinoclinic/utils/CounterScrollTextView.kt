@@ -1,15 +1,13 @@
 package com.medicinoclinic.utils
 
-import android.animation.ValueAnimator
 import android.content.Context
 import android.util.AttributeSet
+import android.view.Choreographer
 import android.view.Gravity
-import android.view.animation.LinearInterpolator
 import androidx.appcompat.widget.AppCompatTextView
 
 /**
- * Horizontal ticker for counter names. Keeps its scroll position when sibling views
- * (token TextView) update or the row is re-laid out.
+ * Smooth seamless horizontal ticker — two counter names visible, no jump at loop.
  */
 class CounterScrollTextView @JvmOverloads constructor(
     context: Context,
@@ -18,9 +16,30 @@ class CounterScrollTextView @JvmOverloads constructor(
 ) : AppCompatTextView(context, attrs, defStyleAttr) {
 
     private var sourceText: String = ""
-    private var scrollAnimator: ValueAnimator? = null
-    private val gap = "          "
-    private val pixelsPerSecond = 45f
+    private var segmentWidth = 0f
+    private var scrollOffset = 0f
+    private var lastFrameTimeNanos = 0L
+    private var tickerRunning = false
+
+    private val gap = "        "
+    private val pixelsPerSecond = 50f
+
+    private val frameCallback: Choreographer.FrameCallback = object : Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            if (!tickerRunning || segmentWidth <= 0f) return
+
+            if (lastFrameTimeNanos != 0L) {
+                val deltaSeconds = (frameTimeNanos - lastFrameTimeNanos) / 1_000_000_000f
+                scrollOffset += pixelsPerSecond * deltaSeconds
+                if (scrollOffset >= segmentWidth) {
+                    scrollOffset %= segmentWidth
+                }
+                scrollTo(scrollOffset.toInt(), 0)
+            }
+            lastFrameTimeNanos = frameTimeNanos
+            Choreographer.getInstance().postFrameCallback(this)
+        }
+    }
 
     init {
         setSingleLine()
@@ -30,8 +49,7 @@ class CounterScrollTextView @JvmOverloads constructor(
     }
 
     fun setScrollingText(text: String) {
-        if (text == sourceText) return
-
+        val sameText = text == sourceText
         sourceText = text
         stopScrolling()
 
@@ -41,69 +59,52 @@ class CounterScrollTextView @JvmOverloads constructor(
             return
         }
 
-        post { applyTextAndMaybeScroll() }
-    }
-
-    private fun applyTextAndMaybeScroll() {
-        if (width == 0) {
-            post { applyTextAndMaybeScroll() }
-            return
-        }
-
-        if (!needsScrolling(sourceText)) {
-            gravity = Gravity.CENTER
-            setText(sourceText)
-            scrollTo(0, 0)
-            return
-        }
+        if (sameText && tickerRunning) return
 
         gravity = Gravity.START or Gravity.CENTER_VERTICAL
-        setText(sourceText + gap + sourceText + gap)
         scrollTo(0, 0)
-        startScrolling()
+        post { startScrollingTicker() }
     }
 
-    private fun needsScrolling(text: String): Boolean {
-        if (text.isEmpty() || width == 0) return false
-        return paint.measureText(text) > width
-    }
-
-    private fun startScrolling() {
-        if (sourceText.isEmpty() || width == 0) return
-
-        val loopWidth = paint.measureText(sourceText + gap)
-        if (loopWidth <= width) return
-
-        scrollAnimator?.cancel()
-        scrollAnimator = ValueAnimator.ofFloat(0f, loopWidth).apply {
-            duration = ((loopWidth / pixelsPerSecond) * 1000).toLong().coerceAtLeast(5000L)
-            interpolator = LinearInterpolator()
-            repeatCount = ValueAnimator.INFINITE
-            repeatMode = ValueAnimator.RESTART
-            addUpdateListener { animator ->
-                scrollTo((animator.animatedValue as Float).toInt(), 0)
-            }
-            start()
+    private fun startScrollingTicker() {
+        if (sourceText.isEmpty()) return
+        if (width == 0) {
+            post { startScrollingTicker() }
+            return
         }
+
+        setHorizontallyScrolling(true)
+        gravity = Gravity.START or Gravity.CENTER_VERTICAL
+
+        val loopSegment = buildLoopSegment()
+        segmentWidth = paint.measureText(loopSegment)
+        if (segmentWidth <= 0f) return
+
+        setText(loopSegment + loopSegment)
+        scrollOffset = 0f
+        lastFrameTimeNanos = 0L
+        scrollTo(0, 0)
+
+        tickerRunning = true
+        Choreographer.getInstance().postFrameCallback(frameCallback)
+    }
+
+    /** Two names per cycle: "Name        Name        " */
+    private fun buildLoopSegment(): String {
+        val nameWithGap = sourceText + gap
+        return nameWithGap + nameWithGap
     }
 
     private fun stopScrolling() {
-        scrollAnimator?.cancel()
-        scrollAnimator = null
+        tickerRunning = false
+        Choreographer.getInstance().removeFrameCallback(frameCallback)
+        lastFrameTimeNanos = 0L
     }
 
-    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
-        val currentScroll = scrollX
-        val animator = scrollAnimator
-        val wasRunning = animator?.isRunning == true
-        val animatedX = if (wasRunning) animator?.animatedValue as? Float else null
-
-        super.onLayout(changed, left, top, right, bottom)
-
-        if (wasRunning && animatedX != null) {
-            scrollTo(animatedX.toInt(), 0)
-        } else if (currentScroll > 0 && scrollAnimator != null) {
-            scrollTo(currentScroll, 0)
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (sourceText.isNotEmpty() && w > 0 && w != oldw) {
+            post { startScrollingTicker() }
         }
     }
 

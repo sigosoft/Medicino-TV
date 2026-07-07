@@ -166,6 +166,7 @@ class SettingsActivity :  FragmentActivity() {
                         baseClass.setSharedPreferance(applicationContext,"pharmacy_id","");
                         baseClass.setSharedPreferance(applicationContext,"type","");
                         baseClass.setSharedPreferance(applicationContext,"token_management_type","");
+                        RetrofitClient.bearer_token = ""
 
                         if(type.equals("1")) {
                             val intent = Intent(applicationContext, ClinicLoginActivity::class.java)

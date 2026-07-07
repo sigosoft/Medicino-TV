@@ -48,6 +48,7 @@ class TokenAnnouncementQueue(
     private var mediaPlayer: MediaPlayer? = null
     private var isPlaying = false
     private var videoPaused = false
+    private var sessionGeneration = 0
 
     fun enqueueDoctorToken(tokenNumber: String, roomNumber: String, doctorId: String) {
         enqueue(Request.Doctor(tokenNumber, roomNumber, doctorId))
@@ -112,12 +113,20 @@ class TokenAnnouncementQueue(
     }
 
     private fun audioCallback(filePrefix: String): Callback<ResponseBody> {
+        val generation = sessionGeneration
         return object : Callback<ResponseBody> {
             override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
+                if (generation != sessionGeneration) return
                 if (response.isSuccessful) {
                     val audioBytes = response.body()?.bytes()
                     if (audioBytes != null) {
-                        mainHandler.post { playAudio(audioBytes, filePrefix) }
+                        mainHandler.post {
+                            if (generation == sessionGeneration) {
+                                playAudio(audioBytes, filePrefix, generation)
+                            } else {
+                                onAnnouncementFinished()
+                            }
+                        }
                         return
                     }
                 }
@@ -125,13 +134,18 @@ class TokenAnnouncementQueue(
             }
 
             override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
+                if (generation != sessionGeneration) return
                 Log.e(TAG, "Announcement API failed: ${t.message}")
                 mainHandler.post { onAnnouncementFinished() }
             }
         }
     }
 
-    private fun playAudio(audioBytes: ByteArray, filePrefix: String) {
+    private fun playAudio(audioBytes: ByteArray, filePrefix: String, generation: Int) {
+        if (generation != sessionGeneration) {
+            onAnnouncementFinished()
+            return
+        }
         try {
             val tempMp3 = File.createTempFile(filePrefix, ".mp3", context.cacheDir)
             FileOutputStream(tempMp3).use { it.write(audioBytes) }
@@ -182,6 +196,7 @@ class TokenAnnouncementQueue(
 
     fun shutdown() {
         synchronized(lock) {
+            sessionGeneration++
             queue.clear()
             isPlaying = false
         }

@@ -146,6 +146,7 @@ class HomeActivity1 : AppCompatActivity() {
     private var paginatedCounters: List<List<CounterListingModel>> = listOf()
     var recyclerViewCounter: RecyclerView? = null
     private val pagecounterSize = 5
+    private val sessionId: Long = System.currentTimeMillis()
 
     private lateinit var pusher: Pusher
 
@@ -197,6 +198,9 @@ class HomeActivity1 : AppCompatActivity() {
 
         RetrofitClient.bearer_token = token
 
+        activeSessionId = sessionId
+        disconnectGlobalPusher()
+
         announcementQueue = TokenAnnouncementQueue(
             context = this,
             apiService = RetrofitClient.ApiUtils.apiService1,
@@ -223,9 +227,10 @@ class HomeActivity1 : AppCompatActivity() {
         options.setCluster("ap2")
 
         // dev
-         pusher = Pusher("e8a2220b4c88b31f047b", options)
+        // pusher = Pusher("e8a2220b4c88b31f047b", options)
         // live key
-        // pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
+         pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
+        activePusher = pusher
 
         pusher.connect(object : ConnectionEventListener {
             override fun onConnectionStateChange(change: ConnectionStateChange) {
@@ -238,9 +243,9 @@ class HomeActivity1 : AppCompatActivity() {
         }, ConnectionState.ALL)
 
         // dev channel
-         val channel: Channel = pusher.subscribe("medicino-tv-stagging")
+        // val channel: Channel = pusher.subscribe("medicino-tv-stagging")
         // live channel
-        // val channel: Channel = pusher.subscribe("medicino-tv-live")
+         val channel: Channel = pusher.subscribe(PUSHER_CHANNEL)
 
         channel.bind("token-called") { event ->
             Log.d("PUSHER_DEBUG", "--------------------")
@@ -248,6 +253,7 @@ class HomeActivity1 : AppCompatActivity() {
             Log.d("PUSHER_DEBUG", "RAW DATA: ${event.data}")
             Log.d("PUSHER_DEBUG", "--------------------")
             runOnUiThread {
+                if (!shouldProcessPusherEvent()) return@runOnUiThread
                 Log.d("DEBUG_FLOW", "Mode: $token_management_type")
 
                 val jsonObject = JSONObject(event.data)
@@ -314,6 +320,7 @@ class HomeActivity1 : AppCompatActivity() {
             Log.d("PUSHER_DEBUG", "OUTSOURCE-TOKEN-CALLED RECEIVED")
             Log.d("PUSHER_DEBUG", "RAW DATA: ${event.data}")
             runOnUiThread {
+                if (!shouldProcessPusherEvent()) return@runOnUiThread
                 // Debug log to verify values at the time the event fires
                 Log.d("DEBUG_OUTSOURCE", "token_management_type=$token_management_type")
                 Log.d("DEBUG_OUTSOURCE", "type=$type")
@@ -368,8 +375,6 @@ class HomeActivity1 : AppCompatActivity() {
             data_usage = formatDataUsage(dailyUsageBytes)
             Log.d("USAGE", "Today's usage: $data_usage")
         }
-
-        pusher.connect()
     }
 
 
@@ -382,6 +387,12 @@ class HomeActivity1 : AppCompatActivity() {
     }
 
     override fun onStop() {
+        if (::announcementQueue.isInitialized) {
+            announcementQueue.shutdown()
+        }
+        disconnectOwnedPusher()
+        handler.removeCallbacks(doctorPageRunnable)
+        handler.removeCallbacks(counterPageRunnable)
         super.onStop()
     }
 
@@ -692,22 +703,33 @@ class HomeActivity1 : AppCompatActivity() {
     private fun isValidCounterId(counterId: String): Boolean {
         return counterId.isNotBlank() &&
             counterId != "-1" &&
+            counterId != "0" &&
             !counterId.equals("null", ignoreCase = true)
+    }
+
+    private fun hasCounterDisplayData(counterObject: org.json.JSONObject): Boolean {
+        val counterName = jsonFieldAsString(counterObject, "counter_name")
+        return counterName.isNotEmpty() && !counterName.equals("null", ignoreCase = true)
+    }
+
+    private fun jsonFieldAsString(jsonObject: org.json.JSONObject, key: String): String {
+        if (!jsonObject.has(key) || jsonObject.isNull(key)) return ""
+        return jsonObject.opt(key).toString().trim()
     }
 
     private fun parseCounterTokens(jsonArray: org.json.JSONArray): List<CounterListingModel> {
         val countersById = LinkedHashMap<String, CounterListingModel>()
         for (index in 0 until jsonArray.length()) {
             val counterObject = jsonArray.getJSONObject(index)
-            val counterId = counterObject.optString("counter_id", "").trim()
-            if (!isValidCounterId(counterId)) continue
+            val counterId = jsonFieldAsString(counterObject, "counter_id")
+            if (!isValidCounterId(counterId) || !hasCounterDisplayData(counterObject)) continue
 
             countersById[counterId] = CounterListingModel(
                 counterId,
-                counterObject.optString("token", "").trim(),
-                counterObject.optString("call_status", "").trim(),
-                counterObject.optString("counter_name", "").trim(),
-                counterObject.optString("booking_id", "").trim()
+                jsonFieldAsString(counterObject, "token"),
+                jsonFieldAsString(counterObject, "call_status"),
+                jsonFieldAsString(counterObject, "counter_name"),
+                jsonFieldAsString(counterObject, "booking_id")
             )
         }
         return countersById.values.toList()
@@ -728,6 +750,9 @@ class HomeActivity1 : AppCompatActivity() {
         recyclerViewCounter?.isVisible = true
         btn_settings?.isVisible = false
         recyclerViewCounter?.layoutManager = LinearLayoutManager(this@HomeActivity1)
+        recyclerViewCounter?.setPadding(0, 0, 0, 0)
+        recyclerViewCounter?.clipToPadding = true
+        recyclerViewCounter?.overScrollMode = View.OVER_SCROLL_NEVER
 
         if (recyclerViewCounter?.adapter == null) {
             counterAdapter = CounterAdapter(listOf())
@@ -994,6 +1019,11 @@ class HomeActivity1 : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        refreshSessionFromPreferences()
+        if (!isLoggedIn()) {
+            disconnectOwnedPusher()
+            return
+        }
         type = baseClass.getSharedPreferance(this@HomeActivity1, "type", "")
         if (!::mPlayer.isInitialized) {
             mPlayer = SimpleExoPlayer.Builder(this@HomeActivity1).build()
@@ -1010,7 +1040,9 @@ class HomeActivity1 : AppCompatActivity() {
         if (doctor_selected_or_unselected == true) {
             getDoctorDetails(type!!)
         }
-        pusher.connect()
+        if (::pusher.isInitialized) {
+            pusher.connect()
+        }
     }
 
     private fun pauseVideoForAnnouncement() {
@@ -1044,7 +1076,43 @@ class HomeActivity1 : AppCompatActivity() {
             tts.stop()
             tts.shutdown()
         }
+        disconnectOwnedPusher()
+        if (activeSessionId == sessionId) {
+            activeSessionId = 0L
+        }
         super.onDestroy()
+    }
+
+    private fun refreshSessionFromPreferences() {
+        token = baseClass.getSharedPreferance(this, "token", "")
+        logged_clinic_id = baseClass.getSharedPreferance(this, "clinic_id", "")
+        logged_doctor_id = baseClass.getSharedPreferance(this, "doctor_id", "")
+        logged_lab_id = baseClass.getSharedPreferance(this, "lab_id", "")
+        logged_pharmacy_id = baseClass.getSharedPreferance(this, "pharmacy_id", "")
+        token_management_type = baseClass.getSharedPreferance(this, "token_management_type", "")
+        type = baseClass.getSharedPreferance(this, "type", "")
+        if (!token.isNullOrBlank()) {
+            RetrofitClient.bearer_token = token
+        }
+    }
+
+    private fun isLoggedIn(): Boolean {
+        val loginStatus = baseClass.getSharedPreferance(this, "login_status", "false")
+        val currentToken = baseClass.getSharedPreferance(this, "token", "")
+        return loginStatus == "true" && !currentToken.isNullOrBlank()
+    }
+
+    private fun shouldProcessPusherEvent(): Boolean {
+        if (isFinishing || isDestroyed) return false
+        if (activeSessionId != sessionId) return false
+        refreshSessionFromPreferences()
+        return isLoggedIn()
+    }
+
+    private fun disconnectOwnedPusher() {
+        if (::pusher.isInitialized && activePusher === pusher) {
+            disconnectGlobalPusher()
+        }
     }
 
     private fun changeTokenStatus(doctor_id: String) {
@@ -1123,5 +1191,25 @@ class HomeActivity1 : AppCompatActivity() {
         }
 
         return totalBytes
+    }
+
+    companion object {
+        private const val PUSHER_CHANNEL = "medicino-tv-live"
+
+        @Volatile
+        private var activeSessionId: Long = 0L
+
+        @Volatile
+        private var activePusher: Pusher? = null
+
+        private fun disconnectGlobalPusher() {
+            try {
+                activePusher?.unsubscribe(PUSHER_CHANNEL)
+                activePusher?.disconnect()
+            } catch (e: Exception) {
+                Log.e("Pusher", "Global disconnect failed", e)
+            }
+            activePusher = null
+        }
     }
 }
