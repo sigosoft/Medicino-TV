@@ -19,22 +19,27 @@
         <LinearLayout
             android:id="@+id/lin_dr"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:layout_weight="1.33"
-            android:orientation="vertical"
-            android:weightSum="3">
+            android:orientation="vertical">
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rv_doctors"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="0dp"
+                android:layout_weight="1"
                 android:descendantFocusability="afterDescendants"
+                android:nestedScrollingEnabled="false"
+                android:overScrollMode="never"
                 android:visibility="gone" />
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rv_counters"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="0dp"
+                android:layout_weight="1"
                 android:descendantFocusability="afterDescendants"
+                android:nestedScrollingEnabled="false"
+                android:overScrollMode="never"
                 android:visibility="gone" />
             <Button
                 android:id="@+id/btn_settings"

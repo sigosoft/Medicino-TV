@@ -227,9 +227,9 @@ class HomeActivity1 : AppCompatActivity() {
         options.setCluster("ap2")
 
         // dev
-        // pusher = Pusher("e8a2220b4c88b31f047b", options)
+         pusher = Pusher("e8a2220b4c88b31f047b", options)
         // live key
-         pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
+        // pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
         activePusher = pusher
 
         pusher.connect(object : ConnectionEventListener {
@@ -243,9 +243,9 @@ class HomeActivity1 : AppCompatActivity() {
         }, ConnectionState.ALL)
 
         // dev channel
-        // val channel: Channel = pusher.subscribe("medicino-tv-stagging")
+         val channel: Channel = pusher.subscribe("medicino-tv-stagging")
         // live channel
-         val channel: Channel = pusher.subscribe(PUSHER_CHANNEL)
+        // val channel: Channel = pusher.subscribe(PUSHER_CHANNEL)
 
         channel.bind("token-called") { event ->
             Log.d("PUSHER_DEBUG", "--------------------")
@@ -568,13 +568,14 @@ class HomeActivity1 : AppCompatActivity() {
                             if (token.isNullOrEmpty()) {
                                 token = ""
                             }
-                            doctorsList.add(DoctorListingModel(doctor_id, name, room, token, "", ""))
+                            val scrollUp = jsonFieldAsString(jObjDoctors, "scroll_up").ifEmpty { "1" }
+                            doctorsList.add(DoctorListingModel(doctor_id, name, room, token, "", "", scrollUp))
                         }
 
                         if (doctorsList.isNotEmpty()) {
+                            configureDoctorRecycler()
                             recyclerViewDoctor?.isVisible = true
                             btn_settings?.isVisible = false
-                            recyclerViewDoctor?.layoutManager = LinearLayoutManager(this@HomeActivity1)
 
                             if (recyclerViewDoctor?.adapter == null) {
                                 doctorAdapter = DoctorAdapter(listOf())
@@ -724,15 +725,27 @@ class HomeActivity1 : AppCompatActivity() {
             val counterId = jsonFieldAsString(counterObject, "counter_id")
             if (!isValidCounterId(counterId) || !hasCounterDisplayData(counterObject)) continue
 
+            val scrollUp = jsonFieldAsString(counterObject, "scroll_up").ifEmpty { "1" }
             countersById[counterId] = CounterListingModel(
                 counterId,
                 jsonFieldAsString(counterObject, "token"),
                 jsonFieldAsString(counterObject, "call_status"),
                 jsonFieldAsString(counterObject, "counter_name"),
-                jsonFieldAsString(counterObject, "booking_id")
+                jsonFieldAsString(counterObject, "booking_id"),
+                scrollUp
             )
         }
         return countersById.values.toList()
+    }
+
+    private fun configureDoctorRecycler() {
+        recyclerViewDoctor?.layoutManager = LinearLayoutManager(this@HomeActivity1)
+        recyclerViewDoctor?.setHasFixedSize(true)
+        recyclerViewDoctor?.isNestedScrollingEnabled = false
+        recyclerViewDoctor?.setPadding(0, 0, 0, 0)
+        recyclerViewDoctor?.clipToPadding = true
+        recyclerViewDoctor?.clipChildren = true
+        recyclerViewDoctor?.overScrollMode = View.OVER_SCROLL_NEVER
     }
 
     private fun bindCountersToUi(type: String, counters: List<CounterListingModel>) {
@@ -750,8 +763,11 @@ class HomeActivity1 : AppCompatActivity() {
         recyclerViewCounter?.isVisible = true
         btn_settings?.isVisible = false
         recyclerViewCounter?.layoutManager = LinearLayoutManager(this@HomeActivity1)
+        recyclerViewCounter?.setHasFixedSize(true)
+        recyclerViewCounter?.isNestedScrollingEnabled = false
         recyclerViewCounter?.setPadding(0, 0, 0, 0)
         recyclerViewCounter?.clipToPadding = true
+        recyclerViewCounter?.clipChildren = true
         recyclerViewCounter?.overScrollMode = View.OVER_SCROLL_NEVER
 
         if (recyclerViewCounter?.adapter == null) {
@@ -935,13 +951,14 @@ class HomeActivity1 : AppCompatActivity() {
                             val room = jObjDoctor.optString("room", "")
                             val tkObject = jObjDoctor.optJSONObject("tk")
                             var token = tkObject?.optString("token", "") ?: ""
-                            doctorsList.add(DoctorListingModel(doctor_id, name, room, token, "", token_call_status))
+                            val scrollUp = jsonFieldAsString(jObjDoctor, "scroll_up").ifEmpty { "1" }
+                            doctorsList.add(DoctorListingModel(doctor_id, name, room, token, "", token_call_status, scrollUp))
                         }
 
                         if (doctorsList.isNotEmpty()) {
+                            configureDoctorRecycler()
                             recyclerViewDoctor?.isVisible = true
                             btn_settings?.isVisible = false
-                            recyclerViewDoctor?.layoutManager = LinearLayoutManager(this@HomeActivity1)
 
                             if (recyclerViewDoctor?.adapter == null) {
                                 doctorAdapter = DoctorAdapter(listOf())
