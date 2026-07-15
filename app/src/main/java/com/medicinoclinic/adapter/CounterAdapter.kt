@@ -49,8 +49,10 @@ class CounterAdapter(private var mList: List<CounterListingModel>) :
             else -> layoutInflater.inflate(R.layout.item_counter, parent, false)
         }
 
-        val initialHeight = if (viewType == VIEW_TYPE_STATIC) {
-            equalHeightForParent(parent)
+        // Never use MATCH_PARENT before RV is measured — that causes intermittent clipping
+        // / missing names on slower Android TVs.
+        val initialHeight = if (viewType == VIEW_TYPE_STATIC && parent.height > 0) {
+            parent.height / mList.size.coerceAtLeast(1)
         } else {
             ViewGroup.LayoutParams.WRAP_CONTENT
         }
@@ -73,28 +75,46 @@ class CounterAdapter(private var mList: List<CounterListingModel>) :
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+        if (position < 0 || position >= mList.size) return
         val counter = mList[position]
+        holder.boundCounterId = counter.counter_id
+        holder.boundCounterName = counter.counter_name
+        holder.boundScrollUp = counter.scroll_up
+
         val disableScroll = counter.scroll_up.trim() == "2"
 
         bindToken(holder, counter)
+        // Bind name immediately so it never depends only on a delayed post.
+        bindCounterNameNow(holder, counter)
 
         if (disableScroll) {
             applyEqualItemHeight(holder)
-            bindCounterName(holder, counter)
-            // Re-apply after layout so every counter stays equal even with 2-line names.
             holder.itemView.post {
-                if (holder.bindingAdapterPosition == RecyclerView.NO_POSITION) return@post
+                if (!holder.isStillBoundTo(counter.counter_id)) return@post
                 applyEqualItemHeight(holder)
+                bindCounterNameNow(holder, counter)
                 fitTokenToBounds(holder)
             }
         } else {
             resetItemHeight(holder)
-            bindCounterName(holder, counter)
         }
 
         holder.itemView.setOnClickListener { view ->
             view.context.startActivity(Intent(view.context, SettingsActivity::class.java))
         }
+    }
+
+    override fun onViewAttachedToWindow(holder: ViewHolder) {
+        super.onViewAttachedToWindow(holder)
+        val position = holder.bindingAdapterPosition
+        if (position == RecyclerView.NO_POSITION || position >= mList.size) return
+        val counter = mList[position]
+        if (counter.scroll_up.trim() == "2") {
+            applyEqualItemHeight(holder)
+        }
+        // Re-assert name after attach — fixes intermittent blank names on some TVs.
+        bindCounterNameNow(holder, counter)
+        holder.tvCounterName.refreshDisplayedText()
     }
 
     override fun getItemCount(): Int = mList.size
@@ -108,13 +128,7 @@ class CounterAdapter(private var mList: List<CounterListingModel>) :
 
         val disableScroll = counter.scroll_up.trim() == "2"
         if (holder.tv_token.text?.toString() != displayToken) {
-            val row = holder.itemView as ViewGroup
-            row.suppressLayout(true)
-            try {
-                holder.tv_token.text = displayToken
-            } finally {
-                row.suppressLayout(false)
-            }
+            holder.tv_token.text = displayToken
         }
 
         if (disableScroll) {
@@ -124,18 +138,17 @@ class CounterAdapter(private var mList: List<CounterListingModel>) :
         }
     }
 
-    private fun bindCounterName(holder: ViewHolder, counter: CounterListingModel) {
-        val counterName = counter.counter_name
+    private fun bindCounterNameNow(holder: ViewHolder, counter: CounterListingModel) {
+        val counterName = counter.counter_name.trim()
         val disableScroll = counter.scroll_up.trim() == "2"
-        holder.itemView.post {
-            if (holder.bindingAdapterPosition == RecyclerView.NO_POSITION) return@post
-            if (disableScroll) {
-                holder.tvCounterName.setStaticText(counterName)
-                fitTokenToBounds(holder)
-            } else {
-                holder.tvCounterName.setScrollingText(counterName)
-                resetTokenSize(holder)
-            }
+        holder.tvCounterName.visibility = View.VISIBLE
+        holder.tvCounterName.alpha = 1f
+        if (disableScroll) {
+            holder.tvCounterName.setStaticText(counterName)
+            fitTokenToBounds(holder)
+        } else {
+            holder.tvCounterName.setScrollingText(counterName)
+            resetTokenSize(holder)
         }
     }
 
@@ -173,14 +186,12 @@ class CounterAdapter(private var mList: List<CounterListingModel>) :
         return (px / scaledDensity).toInt().coerceAtLeast(14)
     }
 
-    private fun equalHeightForParent(parent: ViewGroup): Int {
-        val count = mList.size.coerceAtLeast(1)
-        return if (parent.height > 0) parent.height / count else ViewGroup.LayoutParams.MATCH_PARENT
-    }
-
     private fun applyEqualItemHeight(holder: ViewHolder) {
         val parent = holder.itemView.parent as? RecyclerView ?: run {
-            holder.itemView.post { applyEqualItemHeight(holder) }
+            holder.itemView.post {
+                if (holder.bindingAdapterPosition == RecyclerView.NO_POSITION) return@post
+                applyEqualItemHeight(holder)
+            }
             return
         }
         if (parent.height > 0) {
@@ -191,7 +202,12 @@ class CounterAdapter(private var mList: List<CounterListingModel>) :
             override fun onGlobalLayout() {
                 if (parent.height <= 0) return
                 parent.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                if (holder.bindingAdapterPosition == RecyclerView.NO_POSITION) return
                 setEqualHeight(holder, parent)
+                val pos = holder.bindingAdapterPosition
+                if (pos in mList.indices) {
+                    bindCounterNameNow(holder, mList[pos])
+                }
             }
         })
     }
@@ -257,6 +273,13 @@ class CounterAdapter(private var mList: List<CounterListingModel>) :
         val tvCounterName: CounterScrollTextView = itemView.findViewById(R.id.tv_name)
         val tv_token: TextView = itemView.findViewById(R.id.tv_token)
         val defaultTokenSizePx: Float = tv_token.textSize
+        var boundCounterId: String = ""
+        var boundCounterName: String = ""
+        var boundScrollUp: String = "1"
+
+        fun isStillBoundTo(counterId: String): Boolean {
+            return bindingAdapterPosition != RecyclerView.NO_POSITION && boundCounterId == counterId
+        }
     }
 
     companion object {

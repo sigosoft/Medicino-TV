@@ -116,7 +116,10 @@ class TokenAnnouncementQueue(
         val generation = sessionGeneration
         return object : Callback<ResponseBody> {
             override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
-                if (generation != sessionGeneration) return
+                if (generation != sessionGeneration) {
+                    mainHandler.post { onAnnouncementFinished() }
+                    return
+                }
                 if (response.isSuccessful) {
                     val audioBytes = response.body()?.bytes()
                     if (audioBytes != null) {
@@ -134,7 +137,10 @@ class TokenAnnouncementQueue(
             }
 
             override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
-                if (generation != sessionGeneration) return
+                if (generation != sessionGeneration) {
+                    mainHandler.post { onAnnouncementFinished() }
+                    return
+                }
                 Log.e(TAG, "Announcement API failed: ${t.message}")
                 mainHandler.post { onAnnouncementFinished() }
             }

@@ -10,9 +10,9 @@ import androidx.core.widget.TextViewCompat
 import kotlin.math.abs
 
 /**
- * Smooth seamless horizontal ticker — two counter names visible, no jump at loop.
- * When scrolling is disabled (scroll_up=2), shows counter name on exactly 2 lines,
- * auto-sized to fit the available counter card without overflow.
+ * Smooth seamless horizontal ticker for counter names.
+ * scroll_up=1: scrolling ticker
+ * scroll_up=2: static 2-line name, auto-sized to the card
  */
 class CounterScrollTextView @JvmOverloads constructor(
     context: Context,
@@ -27,9 +27,11 @@ class CounterScrollTextView @JvmOverloads constructor(
     private var tickerRunning = false
     private var scrollingEnabled = true
     private var defaultTextSizePx: Float = textSize
+    private var sizeRetryCount = 0
 
     private val gap = "        "
     private val pixelsPerSecond = 50f
+    private val maxSizeRetries = 8
 
     private val frameCallback: Choreographer.FrameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
@@ -56,9 +58,8 @@ class CounterScrollTextView @JvmOverloads constructor(
     fun setScrollingText(text: String) {
         scrollingEnabled = true
         applyScrollingMode()
-
-        val sameText = text == sourceText
         sourceText = text
+        sizeRetryCount = 0
         stopScrolling()
 
         if (text.isEmpty()) {
@@ -67,26 +68,44 @@ class CounterScrollTextView @JvmOverloads constructor(
             return
         }
 
-        if (sameText && tickerRunning) return
-
-        gravity = Gravity.START or Gravity.CENTER_VERTICAL
+        // Always show something immediately — ticker text is applied once measured.
+        gravity = Gravity.CENTER_HORIZONTAL or Gravity.CENTER_VERTICAL
         scrollTo(0, 0)
+        setText(text)
         post { startScrollingTicker() }
     }
 
     /**
      * Disable ticker and show counter name on 2 centered lines, sized to fit the card.
-     * Example: "Test Counter 2" -> "Test\nCounter 2"
      */
     fun setStaticText(text: String) {
         scrollingEnabled = false
         sourceText = text
+        sizeRetryCount = 0
         stopScrolling()
         applyStaticMode()
 
         scrollTo(0, 0)
-        setText(formatTwoLineName(text))
+        val display = formatTwoLineName(text)
+        setText(display)
+        // Keep a visible fallback size until layout has real bounds.
+        if (width <= 0 || height <= 0) {
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, defaultTextSizePx)
+        }
         post { fitStaticTextToBounds() }
+    }
+
+    /** Re-apply current mode after attach / layout on slow TVs. */
+    fun refreshDisplayedText() {
+        if (sourceText.isEmpty()) return
+        if (scrollingEnabled) {
+            post { startScrollingTicker() }
+        } else {
+            if (text.isNullOrBlank()) {
+                setText(formatTwoLineName(sourceText))
+            }
+            post { fitStaticTextToBounds() }
+        }
     }
 
     private fun applyScrollingMode() {
@@ -97,6 +116,8 @@ class CounterScrollTextView @JvmOverloads constructor(
         ellipsize = null
         isHorizontalScrollBarEnabled = false
         setHorizontallyScrolling(true)
+        visibility = VISIBLE
+        alpha = 1f
     }
 
     private fun applyStaticMode() {
@@ -108,9 +129,10 @@ class CounterScrollTextView @JvmOverloads constructor(
         gravity = Gravity.CENTER
         isHorizontalScrollBarEnabled = false
         includeFontPadding = false
+        visibility = VISIBLE
+        alpha = 1f
     }
 
-    /** Split words into two balanced lines so the full name is readable. */
     private fun formatTwoLineName(text: String): String {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return trimmed
@@ -134,10 +156,16 @@ class CounterScrollTextView @JvmOverloads constructor(
 
     private fun fitStaticTextToBounds() {
         if (scrollingEnabled || sourceText.isEmpty()) return
+        if (!isAttachedToWindow) return
+
         if (width <= 0 || height <= 0) {
-            post { fitStaticTextToBounds() }
+            if (sizeRetryCount < maxSizeRetries) {
+                sizeRetryCount++
+                post { fitStaticTextToBounds() }
+            }
             return
         }
+        sizeRetryCount = 0
 
         val maxSp = pxToSp(defaultTextSizePx).coerceAtLeast(16)
         val minSp = 12
@@ -148,6 +176,9 @@ class CounterScrollTextView @JvmOverloads constructor(
             1,
             TypedValue.COMPLEX_UNIT_SP
         )
+        if (text.isNullOrBlank()) {
+            setText(formatTwoLineName(sourceText))
+        }
     }
 
     private fun pxToSp(px: Float): Int {
@@ -157,17 +188,28 @@ class CounterScrollTextView @JvmOverloads constructor(
 
     private fun startScrollingTicker() {
         if (!scrollingEnabled || sourceText.isEmpty()) return
-        if (width == 0) {
-            post { startScrollingTicker() }
+        if (!isAttachedToWindow) return
+
+        if (width <= 0) {
+            if (sizeRetryCount < maxSizeRetries) {
+                sizeRetryCount++
+                // Keep plain name visible until we can measure for the ticker.
+                if (text.isNullOrBlank()) setText(sourceText)
+                post { startScrollingTicker() }
+            }
             return
         }
+        sizeRetryCount = 0
 
         setHorizontallyScrolling(true)
         gravity = Gravity.START or Gravity.CENTER_VERTICAL
 
         val loopSegment = buildLoopSegment()
         segmentWidth = paint.measureText(loopSegment)
-        if (segmentWidth <= 0f) return
+        if (segmentWidth <= 0f) {
+            setText(sourceText)
+            return
+        }
 
         setText(loopSegment + loopSegment)
         scrollOffset = 0f
@@ -178,7 +220,6 @@ class CounterScrollTextView @JvmOverloads constructor(
         Choreographer.getInstance().postFrameCallback(frameCallback)
     }
 
-    /** Two names per cycle: "Name        Name        " */
     private fun buildLoopSegment(): String {
         val nameWithGap = sourceText + gap
         return nameWithGap + nameWithGap
@@ -192,12 +233,17 @@ class CounterScrollTextView @JvmOverloads constructor(
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        if (w <= 0 || h <= 0) return
-        if (scrollingEnabled && sourceText.isNotEmpty() && w != oldw) {
+        if (w <= 0 || h <= 0 || sourceText.isEmpty()) return
+        if (scrollingEnabled && w != oldw) {
             post { startScrollingTicker() }
-        } else if (!scrollingEnabled && sourceText.isNotEmpty() && (w != oldw || h != oldh)) {
+        } else if (!scrollingEnabled && (w != oldw || h != oldh)) {
             post { fitStaticTextToBounds() }
         }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        refreshDisplayedText()
     }
 
     override fun onDetachedFromWindow() {

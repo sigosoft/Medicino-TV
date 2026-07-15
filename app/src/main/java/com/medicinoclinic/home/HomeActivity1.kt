@@ -227,9 +227,9 @@ class HomeActivity1 : AppCompatActivity() {
         options.setCluster("ap2")
 
         // dev
-         pusher = Pusher("e8a2220b4c88b31f047b", options)
+        // pusher = Pusher("e8a2220b4c88b31f047b", options)
         // live key
-        // pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
+         pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
         activePusher = pusher
 
         pusher.connect(object : ConnectionEventListener {
@@ -243,9 +243,9 @@ class HomeActivity1 : AppCompatActivity() {
         }, ConnectionState.ALL)
 
         // dev channel
-         val channel: Channel = pusher.subscribe("medicino-tv-stagging")
+        // val channel: Channel = pusher.subscribe("medicino-tv-stagging")
         // live channel
-        // val channel: Channel = pusher.subscribe(PUSHER_CHANNEL)
+         val channel: Channel = pusher.subscribe(PUSHER_CHANNEL)
 
         channel.bind("token-called") { event ->
             Log.d("PUSHER_DEBUG", "--------------------")
@@ -277,6 +277,7 @@ class HomeActivity1 : AppCompatActivity() {
                         }
                     }
                 } else {
+                    // Lab (3) / Pharmacy (4)
                     if (token_management_type != "3") {
                         var lab_id = 0
                         var pharmacy_id = 0
@@ -295,11 +296,13 @@ class HomeActivity1 : AppCompatActivity() {
                             if ((type.equals("3") && logged_lab_id.equals(lab_id.toString())) ||
                                 (type.equals("4") && pharmacy_id.toString().equals(logged_pharmacy_id))
                             ) {
-                                updateCounterTokenOnUi(counterId.toString(), tokenNumber, booking_id.toString())
-                                convertTokenTextToSpeech(
-                                    tokenNumber,
+                                // Refresh list from API so newly available counters appear,
+                                // then update token + announce.
+                                handleCounterTokenCalled(
                                     counterId.toString(),
-                                    booking_id.toString()
+                                    tokenNumber,
+                                    booking_id.toString(),
+                                    announceOutsource = false
                                 )
                             }
                         }
@@ -307,8 +310,15 @@ class HomeActivity1 : AppCompatActivity() {
                         val jsonObject2 = JSONObject(event.data)
                         val counterId = jsonObject2.optString("counter_id", "")
                         val tokenNumber = jsonObject2.optString("token_number", "")
-                        updateCounterTokenOnUi(counterId, tokenNumber)
-                        // token_management_type == "3": Just refresh UI, outsource speech handled separately
+                        if (tokenNumber.isNullOrEmpty() || tokenNumber == "null") return@runOnUiThread
+                        // Outsource mode: UI refresh only; TTS comes from outsource-token-called
+                        handleCounterTokenCalled(
+                            counterId,
+                            tokenNumber,
+                            bookingId = null,
+                            announceOutsource = false,
+                            skipAnnouncement = true
+                        )
                         Log.d("DEBUG_FLOW", "token_management_type 3: Refreshing UI only")
                     }
                 }
@@ -345,11 +355,12 @@ class HomeActivity1 : AppCompatActivity() {
 
                     if (isMatch) {
                         Log.d("DEBUG_FLOW", "Match found. Refreshing UI and calling outsource TTS.")
-                        updateCounterTokenOnUi(counterId, tokenNumber)
-                        convertOutsourceTokenTextToSpeech(
-                            outsource_call_id,
+                        handleCounterTokenCalled(
                             counterId,
-                            tokenNumber
+                            tokenNumber,
+                            bookingId = null,
+                            announceOutsource = true,
+                            outsourceCallId = outsource_call_id
                         )
                     } else {
                         Log.d("DEBUG_OUTSOURCE", "ID mismatch. Skipping. Expected pharmacy=$logged_pharmacy_id got=$pharmacy_id")
@@ -387,10 +398,8 @@ class HomeActivity1 : AppCompatActivity() {
     }
 
     override fun onStop() {
-        if (::announcementQueue.isInitialized) {
-            announcementQueue.shutdown()
-        }
-        disconnectOwnedPusher()
+        // Do NOT disconnect Pusher or shut down announcement queue here.
+        // Leaving Settings / brief onStop would kill token updates and TTS until restart.
         handler.removeCallbacks(doctorPageRunnable)
         handler.removeCallbacks(counterPageRunnable)
         super.onStop()
@@ -568,14 +577,13 @@ class HomeActivity1 : AppCompatActivity() {
                             if (token.isNullOrEmpty()) {
                                 token = ""
                             }
-                            val scrollUp = jsonFieldAsString(jObjDoctors, "scroll_up").ifEmpty { "1" }
-                            doctorsList.add(DoctorListingModel(doctor_id, name, room, token, "", "", scrollUp))
+                            doctorsList.add(DoctorListingModel(doctor_id, name, room, token, "", ""))
                         }
 
                         if (doctorsList.isNotEmpty()) {
-                            configureDoctorRecycler()
                             recyclerViewDoctor?.isVisible = true
                             btn_settings?.isVisible = false
+                            recyclerViewDoctor?.layoutManager = LinearLayoutManager(this@HomeActivity1)
 
                             if (recyclerViewDoctor?.adapter == null) {
                                 doctorAdapter = DoctorAdapter(listOf())
@@ -738,16 +746,6 @@ class HomeActivity1 : AppCompatActivity() {
         return countersById.values.toList()
     }
 
-    private fun configureDoctorRecycler() {
-        recyclerViewDoctor?.layoutManager = LinearLayoutManager(this@HomeActivity1)
-        recyclerViewDoctor?.setHasFixedSize(true)
-        recyclerViewDoctor?.isNestedScrollingEnabled = false
-        recyclerViewDoctor?.setPadding(0, 0, 0, 0)
-        recyclerViewDoctor?.clipToPadding = true
-        recyclerViewDoctor?.clipChildren = true
-        recyclerViewDoctor?.overScrollMode = View.OVER_SCROLL_NEVER
-    }
-
     private fun bindCountersToUi(type: String, counters: List<CounterListingModel>) {
         countersList.clear()
         countersList.addAll(counters)
@@ -765,6 +763,7 @@ class HomeActivity1 : AppCompatActivity() {
         recyclerViewCounter?.layoutManager = LinearLayoutManager(this@HomeActivity1)
         recyclerViewCounter?.setHasFixedSize(true)
         recyclerViewCounter?.isNestedScrollingEnabled = false
+        recyclerViewCounter?.setItemViewCacheSize(countersList.size.coerceAtLeast(4))
         recyclerViewCounter?.setPadding(0, 0, 0, 0)
         recyclerViewCounter?.clipToPadding = true
         recyclerViewCounter?.clipChildren = true
@@ -783,6 +782,14 @@ class HomeActivity1 : AppCompatActivity() {
         handler.removeCallbacks(counterPageRunnable)
         if (paginatedCounters.size > 1) {
             handler.postDelayed(counterPageRunnable, 15_000)
+        }
+
+        // After first layout, force a second bind so names are visible on slow TVs.
+        recyclerViewCounter?.post {
+            if (!::counterAdapter.isInitialized) return@post
+            if (paginatedCounters.isEmpty()) return@post
+            val page = counterCurrentPage.coerceIn(0, paginatedCounters.lastIndex)
+            counterAdapter.setCounters(paginatedCounters[page])
         }
     }
 
@@ -951,14 +958,13 @@ class HomeActivity1 : AppCompatActivity() {
                             val room = jObjDoctor.optString("room", "")
                             val tkObject = jObjDoctor.optJSONObject("tk")
                             var token = tkObject?.optString("token", "") ?: ""
-                            val scrollUp = jsonFieldAsString(jObjDoctor, "scroll_up").ifEmpty { "1" }
-                            doctorsList.add(DoctorListingModel(doctor_id, name, room, token, "", token_call_status, scrollUp))
+                            doctorsList.add(DoctorListingModel(doctor_id, name, room, token, "", token_call_status))
                         }
 
                         if (doctorsList.isNotEmpty()) {
-                            configureDoctorRecycler()
                             recyclerViewDoctor?.isVisible = true
                             btn_settings?.isVisible = false
+                            recyclerViewDoctor?.layoutManager = LinearLayoutManager(this@HomeActivity1)
 
                             if (recyclerViewDoctor?.adapter == null) {
                                 doctorAdapter = DoctorAdapter(listOf())
@@ -1016,6 +1022,44 @@ class HomeActivity1 : AppCompatActivity() {
         })
     }
 
+    /**
+     * After a counter token Pusher event:
+     * 1) Optimistically update token on UI
+     * 2) Refresh counters from API (handles counters made available after TV boot)
+     * 3) Play announcement unless skipped / outsource handled separately
+     */
+    private fun handleCounterTokenCalled(
+        counterId: String,
+        tokenNumber: String,
+        bookingId: String?,
+        announceOutsource: Boolean,
+        outsourceCallId: String = "",
+        skipAnnouncement: Boolean = false
+    ) {
+        updateCounterTokenOnUi(counterId, tokenNumber, bookingId)
+        type?.let { getCountersDetails(it) }
+
+        if (skipAnnouncement) return
+
+        ensureAnnouncementQueueReady()
+        if (announceOutsource) {
+            convertOutsourceTokenTextToSpeech(outsourceCallId, counterId, tokenNumber)
+        } else {
+            convertTokenTextToSpeech(tokenNumber, counterId, bookingId ?: "0")
+        }
+    }
+
+    private fun ensureAnnouncementQueueReady() {
+        if (!::announcementQueue.isInitialized) {
+            announcementQueue = TokenAnnouncementQueue(
+                context = this,
+                apiService = RetrofitClient.ApiUtils.apiService1,
+                onAnnouncementStart = { pauseVideoForAnnouncement() },
+                onAllAnnouncementsFinished = { resumeVideoAfterAnnouncement() }
+            )
+        }
+    }
+
     private fun updateCounterTokenOnUi(counterId: String, tokenNumber: String, bookingId: String? = null) {
         if (counterId.isEmpty() || counterId == "-1") return
 
@@ -1029,8 +1073,29 @@ class HomeActivity1 : AppCompatActivity() {
             paginatedCounters = countersList.chunked(pagecounterSize)
         }
 
+        ensureCounterAdapterReady()
         if (::counterAdapter.isInitialized && recyclerViewCounter?.adapter != null) {
+            // If counter not on current page, still try update; refresh from API will show it.
             counterAdapter.updateTokenForCounter(counterId, tokenNumber)
+            recyclerViewCounter?.isVisible = true
+            btn_settings?.isVisible = false
+        }
+    }
+
+    private fun ensureCounterAdapterReady() {
+        if (recyclerViewCounter == null) return
+        if (recyclerViewCounter?.adapter == null || !::counterAdapter.isInitialized) {
+            counterAdapter = CounterAdapter(listOf())
+            recyclerViewCounter?.layoutManager = LinearLayoutManager(this@HomeActivity1)
+            recyclerViewCounter?.adapter = counterAdapter
+            if (paginatedCounters.isNotEmpty()) {
+                val page = counterCurrentPage.coerceIn(0, paginatedCounters.lastIndex)
+                counterAdapter.setCounters(paginatedCounters[page])
+            } else if (countersList.isNotEmpty()) {
+                paginatedCounters = countersList.chunked(pagecounterSize)
+                counterCurrentPage = 0
+                counterAdapter.setCounters(paginatedCounters[0])
+            }
         }
     }
 
@@ -1057,8 +1122,26 @@ class HomeActivity1 : AppCompatActivity() {
         if (doctor_selected_or_unselected == true) {
             getDoctorDetails(type!!)
         }
+        ensureAnnouncementQueueReady()
+        // Keep Pusher alive after Settings / brief background.
         if (::pusher.isInitialized) {
-            pusher.connect()
+            try {
+                pusher.connect()
+            } catch (e: Exception) {
+                Log.e("Pusher", "Reconnect failed", e)
+            }
+        }
+        // Re-bind visible counter names after returning to the screen
+        if (::counterAdapter.isInitialized &&
+            paginatedCounters.isNotEmpty() &&
+            recyclerViewCounter?.isVisible == true
+        ) {
+            val page = counterCurrentPage.coerceIn(0, paginatedCounters.lastIndex)
+            counterAdapter.setCounters(paginatedCounters[page])
+        }
+        // If lab/pharmacy and list empty, pull latest counters (covers counters enabled after boot).
+        if ((type == "3" || type == "4") && countersList.isEmpty()) {
+            type?.let { getCountersDetails(it) }
         }
     }
 
@@ -1156,15 +1239,18 @@ class HomeActivity1 : AppCompatActivity() {
     }
 
     private fun convertTextToSpeech(token_number: String, room_number: String, doctor_id: String) {
+        ensureAnnouncementQueueReady()
         announcementQueue.enqueueDoctorToken(token_number, room_number, doctor_id)
     }
 
     private fun convertTokenTextToSpeech(token_number: String, counter_id: String, booking_id: String) {
+        ensureAnnouncementQueueReady()
         announcementQueue.enqueueCounterToken(token_number, counter_id, booking_id)
     }
 
     private fun convertOutsourceTokenTextToSpeech(outsource_call_id: String, counter_id: String, token_number: String) {
         Log.d("DEBUG_API", "Outsource ID: $outsource_call_id, Counter: $counter_id, Token: $token_number")
+        ensureAnnouncementQueueReady()
         announcementQueue.enqueueOutsourceToken(outsource_call_id, counter_id, token_number)
     }
 
