@@ -114,7 +114,6 @@ class HomeActivity1 : AppCompatActivity() {
     var logged_lab_id: String? = null
     var logged_pharmacy_id: String? = null
     var type: String? = null
-    var token_management_type: String? = null
     var todayString: String? = null
     var baseClass = BaseClass()
     lateinit var mainHandler: Handler
@@ -187,12 +186,7 @@ class HomeActivity1 : AppCompatActivity() {
         logged_pharmacy_id = baseClass.getSharedPreferance(this@HomeActivity1, "pharmacy_id", "")
         type = baseClass.getSharedPreferance(this@HomeActivity1, "type", "")
 
-        // FIX 2: Load token_management_type immediately from SharedPreferences
-        // so it is available when Pusher events fire before getHomeDetails returns
-        token_management_type = baseClass.getSharedPreferance(this@HomeActivity1, "token_management_type", "")
-
         Log.d("DEBUG_STARTUP", "type=$type")
-        Log.d("DEBUG_STARTUP", "token_management_type=$token_management_type")
         Log.d("DEBUG_STARTUP", "logged_pharmacy_id=$logged_pharmacy_id")
         Log.d("DEBUG_STARTUP", "logged_lab_id=$logged_lab_id")
 
@@ -227,9 +221,9 @@ class HomeActivity1 : AppCompatActivity() {
         options.setCluster("ap2")
 
         // dev
-        // pusher = Pusher("e8a2220b4c88b31f047b", options)
+         pusher = Pusher("e8a2220b4c88b31f047b", options)
         // live key
-         pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
+        // pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
         activePusher = pusher
 
         pusher.connect(object : ConnectionEventListener {
@@ -243,9 +237,9 @@ class HomeActivity1 : AppCompatActivity() {
         }, ConnectionState.ALL)
 
         // dev channel
-        // val channel: Channel = pusher.subscribe("medicino-tv-stagging")
+         val channel: Channel = pusher.subscribe("medicino-tv-stagging")
         // live channel
-         val channel: Channel = pusher.subscribe(PUSHER_CHANNEL)
+        // val channel: Channel = pusher.subscribe(PUSHER_CHANNEL)
 
         channel.bind("token-called") { event ->
             Log.d("PUSHER_DEBUG", "--------------------")
@@ -254,120 +248,99 @@ class HomeActivity1 : AppCompatActivity() {
             Log.d("PUSHER_DEBUG", "--------------------")
             runOnUiThread {
                 if (!shouldProcessPusherEvent()) return@runOnUiThread
-                Log.d("DEBUG_FLOW", "Mode: $token_management_type")
 
                 val jsonObject = JSONObject(event.data)
+                val tokenNumber = jsonObject.optString("token_number", "")
+                if (tokenNumber.isNullOrEmpty() || tokenNumber == "null") return@runOnUiThread
 
-                if (type.equals("1") || type.equals("2")) {
-                    var clinicId = 0
-                    getDoctorDetails(type!!)
+                // Clinic/Doctor: ID match → convertTextToSpeech
+                val doctorId = jsonObject.opt("doctor_id")?.toString()?.trim().orEmpty()
+                val clinicId = jsonObject.opt("clinic_id")?.toString()?.trim().orEmpty()
+                val roomNumber = jsonObject.optString("room_number", "")
+                val isClinicMatch = !clinicId.isNullOrEmpty() &&
+                        clinicId != "-1" &&
+                        clinicId != "null" &&
+                        !logged_clinic_id.isNullOrBlank() &&
+                        logged_clinic_id == clinicId
+                val isDoctorMatch = !doctorId.isNullOrEmpty() &&
+                        doctorId != "-1" &&
+                        doctorId != "null" &&
+                        !logged_doctor_id.isNullOrBlank() &&
+                        logged_doctor_id == doctorId
 
-                    val doctorId = jsonObject.optInt("doctor_id", -1)
-                    if (doctorId != -1) {
-                        if (type.equals("1")) {
-                            clinicId = jsonObject.getInt("clinic_id")
-                        }
-                        val tokenNumber = jsonObject.optString("token_number", "")
-                        val roomNumber = jsonObject.optString("room_number", "")
-                        if (tokenNumber.isNullOrEmpty() || tokenNumber == "null") return@runOnUiThread
-                        if ((type.equals("1") && logged_clinic_id.equals(clinicId.toString())) ||
-                            (type.equals("2") && doctorId.toString().equals(logged_doctor_id))
-                        ) {
-                            convertTextToSpeech(tokenNumber, roomNumber, doctorId.toString())
-                        }
-                    }
-                } else {
-                    // Lab (3) / Pharmacy (4)
-                    if (token_management_type != "3") {
-                        var lab_id = 0
-                        var pharmacy_id = 0
-                        val jsonObject2 = JSONObject(event.data)
-
-                        if (type.equals("3")) {
-                            lab_id = jsonObject2.optInt("lab_id", -1)
-                        } else {
-                            pharmacy_id = jsonObject2.optInt("pharmacy_id", -1)
-                        }
-                        if ((type.equals("3") && lab_id != -1) || (type.equals("4") && pharmacy_id != -1)) {
-                            val counterId = jsonObject2.optInt("counter_id", -1)
-                            val tokenNumber = jsonObject2.optString("token_number", "")
-                            val booking_id = jsonObject2.optInt("counter_booking_id", 0)
-                            if (tokenNumber.isNullOrEmpty() || tokenNumber == "null") return@runOnUiThread
-                            if ((type.equals("3") && logged_lab_id.equals(lab_id.toString())) ||
-                                (type.equals("4") && pharmacy_id.toString().equals(logged_pharmacy_id))
-                            ) {
-                                // Refresh list from API so newly available counters appear,
-                                // then update token + announce.
-                                handleCounterTokenCalled(
-                                    counterId.toString(),
-                                    tokenNumber,
-                                    booking_id.toString(),
-                                    announceOutsource = false
-                                )
-                            }
-                        }
-                    } else {
-                        val jsonObject2 = JSONObject(event.data)
-                        val counterId = jsonObject2.optString("counter_id", "")
-                        val tokenNumber = jsonObject2.optString("token_number", "")
-                        if (tokenNumber.isNullOrEmpty() || tokenNumber == "null") return@runOnUiThread
-                        // Outsource mode: UI refresh only; TTS comes from outsource-token-called
-                        handleCounterTokenCalled(
-                            counterId,
-                            tokenNumber,
-                            bookingId = null,
-                            announceOutsource = false,
-                            skipAnnouncement = true
-                        )
-                        Log.d("DEBUG_FLOW", "token_management_type 3: Refreshing UI only")
-                    }
+                if (isClinicMatch || isDoctorMatch) {
+                    updateDoctorTokenOnUi(doctorId, tokenNumber, roomNumber)
+                    convertTextToSpeech(tokenNumber, roomNumber, doctorId)
+                    return@runOnUiThread
                 }
+
+                // Lab/Pharmacy: ID match → convertTokenTextToSpeech
+                val labId = jsonObject.opt("lab_id")?.toString()?.trim().orEmpty()
+                val pharmacyId = jsonObject.opt("pharmacy_id")?.toString()?.trim().orEmpty()
+                val counterId = jsonObject.opt("counter_id")?.toString()?.trim().orEmpty()
+                val bookingId = jsonObject.opt("counter_booking_id")?.toString()?.trim().orEmpty().ifEmpty { "0" }
+                if (counterId.isEmpty() || counterId == "-1" || counterId == "null") return@runOnUiThread
+
+                val isLabMatch = !labId.isNullOrEmpty() &&
+                        labId != "-1" &&
+                        labId != "null" &&
+                        !logged_lab_id.isNullOrBlank() &&
+                        logged_lab_id == labId
+                val isPharmacyMatch = !pharmacyId.isNullOrEmpty() &&
+                        pharmacyId != "-1" &&
+                        pharmacyId != "null" &&
+                        !logged_pharmacy_id.isNullOrBlank() &&
+                        logged_pharmacy_id == pharmacyId
+                if (!isLabMatch && !isPharmacyMatch) return@runOnUiThread
+
+                handleCounterTokenCalled(
+                    counterId = counterId,
+                    tokenNumber = tokenNumber,
+                    bookingId = bookingId,
+                    announceOutsource = false,
+                    refreshType = if (isLabMatch) "3" else "4"
+                )
             }
         }
 
-        // FIX 3: outsource-token-called handler with full debug logging
         channel.bind("outsource-token-called") { event ->
             Log.d("PUSHER_DEBUG", "OUTSOURCE-TOKEN-CALLED RECEIVED")
             Log.d("PUSHER_DEBUG", "RAW DATA: ${event.data}")
             runOnUiThread {
                 if (!shouldProcessPusherEvent()) return@runOnUiThread
-                // Debug log to verify values at the time the event fires
-                Log.d("DEBUG_OUTSOURCE", "token_management_type=$token_management_type")
-                Log.d("DEBUG_OUTSOURCE", "type=$type")
-                Log.d("DEBUG_OUTSOURCE", "logged_pharmacy_id=$logged_pharmacy_id")
-                Log.d("DEBUG_OUTSOURCE", "logged_lab_id=$logged_lab_id")
 
-                if (token_management_type == "3") {
-                    val jsonObject = JSONObject(event.data)
-                    val outsource_call_id = jsonObject.optString("outsource_call_id", "")
-                    val counterId = jsonObject.optString("counter_id", "")
-                    val tokenNumber = jsonObject.optString("token_number", "")
-                    if (tokenNumber.isNullOrEmpty() || tokenNumber == "null") return@runOnUiThread
-                    val lab_id = jsonObject.optInt("lab_id", -1)
-                    val pharmacy_id = jsonObject.optInt("pharmacy_id", -1)
+                val jsonObject = JSONObject(event.data)
+                val outsourceCallId = jsonObject.optString("outsource_call_id", "")
+                val counterId = jsonObject.opt("counter_id")?.toString()?.trim().orEmpty()
+                val tokenNumber = jsonObject.optString("token_number", "")
+                if (tokenNumber.isNullOrEmpty() || tokenNumber == "null") return@runOnUiThread
+                if (counterId.isEmpty() || counterId == "-1" || counterId == "null") return@runOnUiThread
 
-                    Log.d("DEBUG_OUTSOURCE", "event pharmacy_id=$pharmacy_id, event lab_id=$lab_id")
-
-                    val isMatch = (type == "3" && logged_lab_id == lab_id.toString()) ||
-                            (type == "4" && logged_pharmacy_id == pharmacy_id.toString())
-
-                    Log.d("DEBUG_OUTSOURCE", "isMatch=$isMatch")
-
-                    if (isMatch) {
-                        Log.d("DEBUG_FLOW", "Match found. Refreshing UI and calling outsource TTS.")
-                        handleCounterTokenCalled(
-                            counterId,
-                            tokenNumber,
-                            bookingId = null,
-                            announceOutsource = true,
-                            outsourceCallId = outsource_call_id
-                        )
-                    } else {
-                        Log.d("DEBUG_OUTSOURCE", "ID mismatch. Skipping. Expected pharmacy=$logged_pharmacy_id got=$pharmacy_id")
-                    }
-                } else {
-                    Log.d("DEBUG_OUTSOURCE", "BLOCKED: token_management_type=$token_management_type, expected 3")
+                val labId = jsonObject.opt("lab_id")?.toString()?.trim().orEmpty()
+                val pharmacyId = jsonObject.opt("pharmacy_id")?.toString()?.trim().orEmpty()
+                val isLabMatch = !labId.isNullOrEmpty() &&
+                        labId != "-1" &&
+                        labId != "null" &&
+                        !logged_lab_id.isNullOrBlank() &&
+                        logged_lab_id == labId
+                val isPharmacyMatch = !pharmacyId.isNullOrEmpty() &&
+                        pharmacyId != "-1" &&
+                        pharmacyId != "null" &&
+                        !logged_pharmacy_id.isNullOrBlank() &&
+                        logged_pharmacy_id == pharmacyId
+                if (!isLabMatch && !isPharmacyMatch) {
+                    Log.d("DEBUG_OUTSOURCE", "ID mismatch. Skipping.")
+                    return@runOnUiThread
                 }
+
+                handleCounterTokenCalled(
+                    counterId = counterId,
+                    tokenNumber = tokenNumber,
+                    bookingId = null,
+                    announceOutsource = true,
+                    outsourceCallId = outsourceCallId,
+                    refreshType = if (isLabMatch) "3" else "4"
+                )
             }
         }
 
@@ -527,17 +500,6 @@ class HomeActivity1 : AppCompatActivity() {
                     var jsonObject: JSONObject? = null
                     jsonObject = JSONObject(response_from_server)
                     var jObj_data = jsonObject.getJSONObject("data")
-
-                    if (jObj_data.has("token_management_type")) {
-                        token_management_type = jObj_data.getString("token_management_type")
-                        // Also persist in case it was not saved at login
-                        baseClass.setSharedPreferance(
-                            this@HomeActivity1,
-                            "token_management_type",
-                            token_management_type
-                        )
-                        Log.d("DEBUG_CONFIG", "token_management_type from getHomeDetails: $token_management_type")
-                    }
 
                     var jsonArry_doctors = jObj_data.getJSONArray("doctors")
                     var jsonArray_counter_tokens = jObj_data.getJSONArray("counter_tokens")
@@ -1025,8 +987,7 @@ class HomeActivity1 : AppCompatActivity() {
     /**
      * After a counter token Pusher event:
      * 1) Optimistically update token on UI
-     * 2) Refresh counters from API (handles counters made available after TV boot)
-     * 3) Play announcement unless skipped / outsource handled separately
+     * 2) Play announcement unless skipped / outsource handled separately
      */
     private fun handleCounterTokenCalled(
         counterId: String,
@@ -1034,10 +995,10 @@ class HomeActivity1 : AppCompatActivity() {
         bookingId: String?,
         announceOutsource: Boolean,
         outsourceCallId: String = "",
-        skipAnnouncement: Boolean = false
+        skipAnnouncement: Boolean = false,
+        refreshType: String? = null
     ) {
         updateCounterTokenOnUi(counterId, tokenNumber, bookingId)
-        type?.let { getCountersDetails(it) }
 
         if (skipAnnouncement) return
 
@@ -1057,6 +1018,26 @@ class HomeActivity1 : AppCompatActivity() {
                 onAnnouncementStart = { pauseVideoForAnnouncement() },
                 onAllAnnouncementsFinished = { resumeVideoAfterAnnouncement() }
             )
+        }
+    }
+
+    private fun updateDoctorTokenOnUi(doctorId: String, tokenNumber: String, roomNumber: String? = null) {
+        if (doctorId.isEmpty() || doctorId == "-1" || doctorId == "null") return
+
+        val listIndex = doctorsList.indexOfFirst { it.doctor_id == doctorId }
+        if (listIndex >= 0) {
+            val current = doctorsList[listIndex]
+            doctorsList[listIndex] = current.copy(
+                token = tokenNumber,
+                room = roomNumber?.takeIf { it.isNotBlank() && it != "null" } ?: current.room
+            )
+            paginatedDoctors = doctorsList.chunked(pageSize)
+        }
+
+        if (::doctorAdapter.isInitialized && recyclerViewDoctor?.adapter != null) {
+            doctorAdapter.updateTokenForDoctor(doctorId, tokenNumber, roomNumber)
+            recyclerViewDoctor?.isVisible = true
+            btn_settings?.isVisible = false
         }
     }
 
@@ -1189,7 +1170,6 @@ class HomeActivity1 : AppCompatActivity() {
         logged_doctor_id = baseClass.getSharedPreferance(this, "doctor_id", "")
         logged_lab_id = baseClass.getSharedPreferance(this, "lab_id", "")
         logged_pharmacy_id = baseClass.getSharedPreferance(this, "pharmacy_id", "")
-        token_management_type = baseClass.getSharedPreferance(this, "token_management_type", "")
         type = baseClass.getSharedPreferance(this, "type", "")
         if (!token.isNullOrBlank()) {
             RetrofitClient.bearer_token = token

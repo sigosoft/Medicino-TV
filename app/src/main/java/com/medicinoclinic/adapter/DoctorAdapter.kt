@@ -54,13 +54,20 @@ class DoctorAdapter(private var mList: List<DoctorListingModel>) : RecyclerView.
         return holder
     }
 
+    override fun onBindViewHolder(holder: ViewHolder, position: Int, payloads: MutableList<Any>) {
+        if (payloads.contains(PAYLOAD_TOKEN)) {
+            bindTokenAndRoom(holder, mList[position])
+            return
+        }
+        onBindViewHolder(holder, position)
+    }
+
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val doctor = mList[position]
         val displayName = "Dr. ${doctor.name}"
         val disableScroll = doctor.scroll_up.trim() == "2"
 
-        holder.tv_room.text = if (doctor.room == "null") "NA" else doctor.room
-        holder.tv_token.text = doctor.token.trim().ifEmpty { "0" }
+        bindTokenAndRoom(holder, doctor)
 
         if (disableScroll) {
             applyEqualItemHeight(holder)
@@ -81,6 +88,19 @@ class DoctorAdapter(private var mList: List<DoctorListingModel>) : RecyclerView.
             if (view.isFocusable) {
                 view.context.startActivity(Intent(view.context, SettingsActivity::class.java))
             }
+        }
+    }
+
+    private fun bindTokenAndRoom(holder: ViewHolder, doctor: DoctorListingModel) {
+        holder.tv_room.text = if (doctor.room == "null") "NA" else doctor.room
+        val tokenText = doctor.token.trim()
+        holder.tv_token.text = if (tokenText.isEmpty() || tokenText.equals("null", ignoreCase = true)) {
+            "0"
+        } else {
+            tokenText
+        }
+        if (doctor.scroll_up.trim() == "2") {
+            fitLabeledValues(holder)
         }
     }
 
@@ -231,6 +251,24 @@ class DoctorAdapter(private var mList: List<DoctorListingModel>) : RecyclerView.
         notifyDataSetChanged()
     }
 
+    fun updateTokenForDoctor(doctorId: String, newToken: String, newRoom: String? = null) {
+        val index = mList.indexOfFirst { it.doctor_id == doctorId }
+        if (index < 0) return
+
+        val current = mList[index]
+        val tokenUnchanged = current.token.trim() == newToken.trim()
+        val roomUnchanged = newRoom == null || current.room.trim() == newRoom.trim()
+        if (tokenUnchanged && roomUnchanged) return
+
+        val updatedList = mList.toMutableList()
+        updatedList[index] = current.copy(
+            token = newToken,
+            room = newRoom?.takeIf { it.isNotBlank() && it != "null" } ?: current.room
+        )
+        mList = updatedList
+        notifyItemChanged(index, PAYLOAD_TOKEN)
+    }
+
     fun setMarqueeSpeed(tv: TextView?, speed: Float) {
         if (tv != null) {
             try {
@@ -262,5 +300,6 @@ class DoctorAdapter(private var mList: List<DoctorListingModel>) : RecyclerView.
     companion object {
         private const val VIEW_TYPE_SCROLL = 1
         private const val VIEW_TYPE_STATIC = 2
+        private const val PAYLOAD_TOKEN = "payload_token"
     }
 }

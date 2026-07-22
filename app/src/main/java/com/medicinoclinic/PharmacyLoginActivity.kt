@@ -149,12 +149,6 @@ class PharmacyLoginActivity : AppCompatActivity() {
                         baseClass.setSharedPreferance(applicationContext, "pharmacyUsername", userName)
                         baseClass.setSharedPreferance(applicationContext, "pharmacyPassword", password)
 
-                        // FIX 1: Save token_management_type at login so it is available
-                        // immediately in HomeActivity1 before getHomeDetails API returns
-                        val tokenManagementType = if (data.has("token_management_type")) data.opt("token_management_type").toString() else ""
-                        baseClass.setSharedPreferance(applicationContext, "token_management_type", tokenManagementType)
-                        Log.d("DEBUG_LOGIN", "Saved token_management_type=$tokenManagementType for pharmacy_id=$pharmacyId")
-
                         RetrofitClient.bearer_token = data.getString("token")
                         baseClass.setSharedPreferance(applicationContext, "login_status", "true")
 

@@ -165,7 +165,6 @@ class SettingsActivity :  FragmentActivity() {
                         baseClass.setSharedPreferance(applicationContext,"lab_id","");
                         baseClass.setSharedPreferance(applicationContext,"pharmacy_id","");
                         baseClass.setSharedPreferance(applicationContext,"type","");
-                        baseClass.setSharedPreferance(applicationContext,"token_management_type","");
                         RetrofitClient.bearer_token = ""
 
                         if(type.equals("1")) {
