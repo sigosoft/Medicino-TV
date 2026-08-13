@@ -221,9 +221,9 @@ class HomeActivity1 : AppCompatActivity() {
         options.setCluster("ap2")
 
         // dev
-         pusher = Pusher("e8a2220b4c88b31f047b", options)
+        // pusher = Pusher("e8a2220b4c88b31f047b", options)
         // live key
-        // pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
+         pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
         activePusher = pusher
 
         pusher.connect(object : ConnectionEventListener {
@@ -237,9 +237,9 @@ class HomeActivity1 : AppCompatActivity() {
         }, ConnectionState.ALL)
 
         // dev channel
-         val channel: Channel = pusher.subscribe("medicino-tv-stagging")
+        // val channel: Channel = pusher.subscribe("medicino-tv-stagging")
         // live channel
-        // val channel: Channel = pusher.subscribe(PUSHER_CHANNEL)
+         val channel: Channel = pusher.subscribe(PUSHER_CHANNEL)
 
         channel.bind("token-called") { event ->
             Log.d("PUSHER_DEBUG", "--------------------")

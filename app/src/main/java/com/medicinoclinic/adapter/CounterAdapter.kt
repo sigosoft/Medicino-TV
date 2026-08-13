@@ -49,18 +49,10 @@ class CounterAdapter(private var mList: List<CounterListingModel>) :
             else -> layoutInflater.inflate(R.layout.item_counter, parent, false)
         }
 
-        // Never use MATCH_PARENT before RV is measured — that causes intermittent clipping
-        // / missing names on slower Android TVs.
-        val initialHeight = if (viewType == VIEW_TYPE_STATIC && parent.height > 0) {
-            parent.height / mList.size.coerceAtLeast(1)
-        } else {
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        }
         view.layoutParams = RecyclerView.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            initialHeight
+            initialItemHeight(parent)
         )
-
         view.isFocusable = true
         view.isFocusableInTouchMode = true
         return ViewHolder(view)
@@ -81,22 +73,15 @@ class CounterAdapter(private var mList: List<CounterListingModel>) :
         holder.boundCounterName = counter.counter_name
         holder.boundScrollUp = counter.scroll_up
 
-        val disableScroll = counter.scroll_up.trim() == "2"
-
+        applyEqualItemHeight(holder)
         bindToken(holder, counter)
-        // Bind name immediately so it never depends only on a delayed post.
         bindCounterNameNow(holder, counter)
 
-        if (disableScroll) {
+        holder.itemView.post {
+            if (!holder.isStillBoundTo(counter.counter_id)) return@post
             applyEqualItemHeight(holder)
-            holder.itemView.post {
-                if (!holder.isStillBoundTo(counter.counter_id)) return@post
-                applyEqualItemHeight(holder)
-                bindCounterNameNow(holder, counter)
-                fitTokenToBounds(holder)
-            }
-        } else {
-            resetItemHeight(holder)
+            bindCounterNameNow(holder, counter)
+            fitTokenToBounds(holder)
         }
 
         holder.itemView.setOnClickListener { view ->
@@ -109,11 +94,9 @@ class CounterAdapter(private var mList: List<CounterListingModel>) :
         val position = holder.bindingAdapterPosition
         if (position == RecyclerView.NO_POSITION || position >= mList.size) return
         val counter = mList[position]
-        if (counter.scroll_up.trim() == "2") {
-            applyEqualItemHeight(holder)
-        }
-        // Re-assert name after attach — fixes intermittent blank names on some TVs.
+        applyEqualItemHeight(holder)
         bindCounterNameNow(holder, counter)
+        fitTokenToBounds(holder)
         holder.tvCounterName.refreshDisplayedText()
     }
 
@@ -126,64 +109,50 @@ class CounterAdapter(private var mList: List<CounterListingModel>) :
             else -> tokenText
         }
 
-        val disableScroll = counter.scroll_up.trim() == "2"
         if (holder.tv_token.text?.toString() != displayToken) {
             holder.tv_token.text = displayToken
         }
-
-        if (disableScroll) {
-            fitTokenToBounds(holder)
-        } else {
-            resetTokenSize(holder)
-        }
+        fitTokenToBounds(holder)
     }
 
     private fun bindCounterNameNow(holder: ViewHolder, counter: CounterListingModel) {
         val counterName = counter.counter_name.trim()
-        val disableScroll = counter.scroll_up.trim() == "2"
         holder.tvCounterName.visibility = View.VISIBLE
         holder.tvCounterName.alpha = 1f
-        if (disableScroll) {
+        if (counter.scroll_up.trim() == "2") {
             holder.tvCounterName.setStaticText(counterName)
-            fitTokenToBounds(holder)
         } else {
             holder.tvCounterName.setScrollingText(counterName)
-            resetTokenSize(holder)
         }
     }
 
     private fun fitTokenToBounds(holder: ViewHolder) {
         val tokenView = holder.tv_token
+        tokenView.maxLines = 1
+        tokenView.includeFontPadding = false
+        tokenView.gravity = android.view.Gravity.CENTER
         tokenView.post {
             if (holder.bindingAdapterPosition == RecyclerView.NO_POSITION) return@post
             if (tokenView.width <= 0 || tokenView.height <= 0) return@post
             val maxSp = pxToSp(tokenView, holder.defaultTokenSizePx).coerceAtLeast(18)
             TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
                 tokenView,
-                14,
+                12,
                 maxSp,
                 1,
                 TypedValue.COMPLEX_UNIT_SP
             )
-            tokenView.maxLines = 1
-            tokenView.gravity = android.view.Gravity.CENTER
-        }
-    }
-
-    private fun resetTokenSize(holder: ViewHolder) {
-        val tokenView = holder.tv_token
-        TextViewCompat.setAutoSizeTextTypeWithDefaults(
-            tokenView,
-            TextViewCompat.AUTO_SIZE_TEXT_TYPE_NONE
-        )
-        if (holder.defaultTokenSizePx > 0f) {
-            tokenView.setTextSize(TypedValue.COMPLEX_UNIT_PX, holder.defaultTokenSizePx)
         }
     }
 
     private fun pxToSp(view: View, px: Float): Int {
         val scaledDensity = view.resources.displayMetrics.scaledDensity
         return (px / scaledDensity).toInt().coerceAtLeast(14)
+    }
+
+    private fun initialItemHeight(parent: ViewGroup): Int {
+        val count = mList.size.coerceAtLeast(1)
+        return if (parent.height > 0) parent.height / count else ViewGroup.LayoutParams.WRAP_CONTENT
     }
 
     private fun applyEqualItemHeight(holder: ViewHolder) {
@@ -207,6 +176,7 @@ class CounterAdapter(private var mList: List<CounterListingModel>) :
                 val pos = holder.bindingAdapterPosition
                 if (pos in mList.indices) {
                     bindCounterNameNow(holder, mList[pos])
+                    fitTokenToBounds(holder)
                 }
             }
         })
@@ -225,14 +195,6 @@ class CounterAdapter(private var mList: List<CounterListingModel>) :
         if (lp.height != itemHeight || lp.width != ViewGroup.LayoutParams.MATCH_PARENT) {
             lp.width = ViewGroup.LayoutParams.MATCH_PARENT
             lp.height = itemHeight
-            holder.itemView.layoutParams = lp
-        }
-    }
-
-    private fun resetItemHeight(holder: ViewHolder) {
-        val lp = holder.itemView.layoutParams ?: return
-        if (lp.height != ViewGroup.LayoutParams.WRAP_CONTENT) {
-            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
             holder.itemView.layoutParams = lp
         }
     }

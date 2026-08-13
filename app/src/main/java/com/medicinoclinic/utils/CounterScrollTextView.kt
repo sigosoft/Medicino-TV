@@ -8,10 +8,11 @@ import android.view.Gravity
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.widget.TextViewCompat
 import kotlin.math.abs
+import kotlin.math.min
 
 /**
  * Smooth seamless horizontal ticker for counter names.
- * scroll_up=1: scrolling ticker
+ * scroll_up=1: scrolling ticker, font fitted to the row so mixed pages cannot overflow
  * scroll_up=2: static 2-line name, auto-sized to the card
  */
 class CounterScrollTextView @JvmOverloads constructor(
@@ -52,6 +53,7 @@ class CounterScrollTextView @JvmOverloads constructor(
 
     init {
         defaultTextSizePx = textSize
+        includeFontPadding = false
         applyScrollingMode()
     }
 
@@ -68,7 +70,6 @@ class CounterScrollTextView @JvmOverloads constructor(
             return
         }
 
-        // Always show something immediately — ticker text is applied once measured.
         gravity = Gravity.CENTER_HORIZONTAL or Gravity.CENTER_VERTICAL
         scrollTo(0, 0)
         setText(text)
@@ -88,7 +89,6 @@ class CounterScrollTextView @JvmOverloads constructor(
         scrollTo(0, 0)
         val display = formatTwoLineName(text)
         setText(display)
-        // Keep a visible fallback size until layout has real bounds.
         if (width <= 0 || height <= 0) {
             setTextSize(TypedValue.COMPLEX_UNIT_PX, defaultTextSizePx)
         }
@@ -114,6 +114,7 @@ class CounterScrollTextView @JvmOverloads constructor(
         setSingleLine()
         maxLines = 1
         ellipsize = null
+        includeFontPadding = false
         isHorizontalScrollBarEnabled = false
         setHorizontallyScrolling(true)
         visibility = VISIBLE
@@ -186,20 +187,48 @@ class CounterScrollTextView @JvmOverloads constructor(
         return (px / scaledDensity).toInt().coerceAtLeast(12)
     }
 
+    private fun spToPx(sp: Int): Float {
+        return TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_SP,
+            sp.toFloat(),
+            resources.displayMetrics
+        )
+    }
+
+    private fun fitScrollingFontToHeight() {
+        val availableHeight = (height - paddingTop - paddingBottom).toFloat()
+        if (availableHeight <= 0f) return
+
+        TextViewCompat.setAutoSizeTextTypeWithDefaults(this, TextViewCompat.AUTO_SIZE_TEXT_TYPE_NONE)
+        val minSize = spToPx(12)
+        var size = min(defaultTextSizePx, availableHeight * 0.9f).coerceAtLeast(minSize)
+        setTextSize(TypedValue.COMPLEX_UNIT_PX, size)
+
+        var metrics = paint.fontMetrics
+        var textHeight = metrics.descent - metrics.ascent
+        while (textHeight > availableHeight && size > minSize) {
+            size = (size - 1f).coerceAtLeast(minSize)
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, size)
+            metrics = paint.fontMetrics
+            textHeight = metrics.descent - metrics.ascent
+        }
+    }
+
     private fun startScrollingTicker() {
         if (!scrollingEnabled || sourceText.isEmpty()) return
         if (!isAttachedToWindow) return
 
-        if (width <= 0) {
+        if (width <= 0 || height <= 0) {
             if (sizeRetryCount < maxSizeRetries) {
                 sizeRetryCount++
-                // Keep plain name visible until we can measure for the ticker.
                 if (text.isNullOrBlank()) setText(sourceText)
                 post { startScrollingTicker() }
             }
             return
         }
         sizeRetryCount = 0
+        includeFontPadding = false
+        fitScrollingFontToHeight()
 
         setHorizontallyScrolling(true)
         gravity = Gravity.START or Gravity.CENTER_VERTICAL
@@ -234,7 +263,7 @@ class CounterScrollTextView @JvmOverloads constructor(
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         if (w <= 0 || h <= 0 || sourceText.isEmpty()) return
-        if (scrollingEnabled && w != oldw) {
+        if (scrollingEnabled && (w != oldw || h != oldh)) {
             post { startScrollingTicker() }
         } else if (!scrollingEnabled && (w != oldw || h != oldh)) {
             post { fitStaticTextToBounds() }

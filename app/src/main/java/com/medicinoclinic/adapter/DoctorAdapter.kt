@@ -35,11 +35,7 @@ class DoctorAdapter(private var mList: List<DoctorListingModel>) : RecyclerView.
             }
         }
 
-        val initialHeight = if (viewType == VIEW_TYPE_STATIC) {
-            equalHeightForParent(parent)
-        } else {
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        }
+        val initialHeight = equalHeightForParent(parent)
         view.layoutParams = RecyclerView.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             initialHeight
@@ -69,18 +65,17 @@ class DoctorAdapter(private var mList: List<DoctorListingModel>) : RecyclerView.
 
         bindTokenAndRoom(holder, doctor)
 
+        applyEqualItemHeight(holder)
         if (disableScroll) {
-            applyEqualItemHeight(holder)
             bindStaticDoctorName(holder, displayName)
-            fitLabeledValues(holder)
-            holder.itemView.post {
-                if (holder.bindingAdapterPosition == RecyclerView.NO_POSITION) return@post
-                applyEqualItemHeight(holder)
-                fitLabeledValues(holder)
-            }
         } else {
-            resetItemHeight(holder)
             bindScrollingDoctorName(holder, displayName, doctor.name)
+        }
+        fitLabeledValues(holder)
+        holder.itemView.post {
+            if (holder.bindingAdapterPosition == RecyclerView.NO_POSITION) return@post
+            applyEqualItemHeight(holder)
+            fitLabeledValues(holder)
         }
 
         holder.itemView.setOnFocusChangeListener { _, _ -> }
@@ -99,9 +94,7 @@ class DoctorAdapter(private var mList: List<DoctorListingModel>) : RecyclerView.
         } else {
             tokenText
         }
-        if (doctor.scroll_up.trim() == "2") {
-            fitLabeledValues(holder)
-        }
+        fitLabeledValues(holder)
     }
 
     private fun bindScrollingDoctorName(holder: ViewHolder, displayName: String, rawName: String) {
@@ -194,14 +187,6 @@ class DoctorAdapter(private var mList: List<DoctorListingModel>) : RecyclerView.
         if (lp.height != itemHeight || lp.width != ViewGroup.LayoutParams.MATCH_PARENT) {
             lp.width = ViewGroup.LayoutParams.MATCH_PARENT
             lp.height = itemHeight
-            holder.itemView.layoutParams = lp
-        }
-    }
-
-    private fun resetItemHeight(holder: ViewHolder) {
-        val lp = holder.itemView.layoutParams ?: return
-        if (lp.height != ViewGroup.LayoutParams.WRAP_CONTENT) {
-            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
             holder.itemView.layoutParams = lp
         }
     }
