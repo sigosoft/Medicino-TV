@@ -201,7 +201,7 @@ class CounterScrollTextView @JvmOverloads constructor(
 
         TextViewCompat.setAutoSizeTextTypeWithDefaults(this, TextViewCompat.AUTO_SIZE_TEXT_TYPE_NONE)
         val minSize = spToPx(12)
-        var size = min(defaultTextSizePx, availableHeight * 0.9f).coerceAtLeast(minSize)
+        var size = min(defaultTextSizePx, availableHeight * 0.96f).coerceAtLeast(minSize)
         setTextSize(TypedValue.COMPLEX_UNIT_PX, size)
 
         var metrics = paint.fontMetrics
