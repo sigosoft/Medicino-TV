@@ -251,7 +251,6 @@ class HomeActivity1 : AppCompatActivity() {
 
                 val jsonObject = JSONObject(event.data)
                 val tokenNumber = jsonObject.optString("token_number", "")
-                if (tokenNumber.isNullOrEmpty() || tokenNumber == "null") return@runOnUiThread
 
                 // Clinic/Doctor: ID match → convertTextToSpeech
                 val doctorId = jsonObject.opt("doctor_id")?.toString()?.trim().orEmpty()
@@ -268,7 +267,9 @@ class HomeActivity1 : AppCompatActivity() {
                         !logged_doctor_id.isNullOrBlank() &&
                         logged_doctor_id == doctorId
 
-                if (isClinicMatch || isDoctorMatch) {
+                if (!tokenNumber.isNullOrEmpty() && tokenNumber != "null" &&
+                    (isClinicMatch || isDoctorMatch)
+                ) {
                     updateDoctorTokenOnUi(doctorId, tokenNumber, roomNumber)
                     convertTextToSpeech(tokenNumber, roomNumber, doctorId)
                     return@runOnUiThread
@@ -279,7 +280,6 @@ class HomeActivity1 : AppCompatActivity() {
                 val pharmacyId = jsonObject.opt("pharmacy_id")?.toString()?.trim().orEmpty()
                 val counterId = jsonObject.opt("counter_id")?.toString()?.trim().orEmpty()
                 val bookingId = jsonObject.opt("counter_booking_id")?.toString()?.trim().orEmpty().ifEmpty { "0" }
-                if (counterId.isEmpty() || counterId == "-1" || counterId == "null") return@runOnUiThread
 
                 val isLabMatch = !labId.isNullOrEmpty() &&
                         labId != "-1" &&
@@ -291,6 +291,18 @@ class HomeActivity1 : AppCompatActivity() {
                         pharmacyId != "null" &&
                         !logged_pharmacy_id.isNullOrBlank() &&
                         logged_pharmacy_id == pharmacyId
+
+                val hasInvalidCounterFields = tokenNumber.isNullOrEmpty() || tokenNumber == "null" ||
+                        counterId.isEmpty() || counterId == "-1" || counterId == "null"
+                if (hasInvalidCounterFields) {
+                    if (isLabMatch) {
+                        getCountersDetails("3")
+                    } else if (isPharmacyMatch) {
+                        getCountersDetails("4")
+                    }
+                    return@runOnUiThread
+                }
+
                 if (!isLabMatch && !isPharmacyMatch) return@runOnUiThread
 
                 handleCounterTokenCalled(
@@ -313,8 +325,6 @@ class HomeActivity1 : AppCompatActivity() {
                 val outsourceCallId = jsonObject.optString("outsource_call_id", "")
                 val counterId = jsonObject.opt("counter_id")?.toString()?.trim().orEmpty()
                 val tokenNumber = jsonObject.optString("token_number", "")
-                if (tokenNumber.isNullOrEmpty() || tokenNumber == "null") return@runOnUiThread
-                if (counterId.isEmpty() || counterId == "-1" || counterId == "null") return@runOnUiThread
 
                 val labId = jsonObject.opt("lab_id")?.toString()?.trim().orEmpty()
                 val pharmacyId = jsonObject.opt("pharmacy_id")?.toString()?.trim().orEmpty()
@@ -328,6 +338,18 @@ class HomeActivity1 : AppCompatActivity() {
                         pharmacyId != "null" &&
                         !logged_pharmacy_id.isNullOrBlank() &&
                         logged_pharmacy_id == pharmacyId
+
+                val hasInvalidCounterFields = tokenNumber.isNullOrEmpty() || tokenNumber == "null" ||
+                        counterId.isEmpty() || counterId == "-1" || counterId == "null"
+                if (hasInvalidCounterFields) {
+                    if (isLabMatch) {
+                        getCountersDetails("3")
+                    } else if (isPharmacyMatch) {
+                        getCountersDetails("4")
+                    }
+                    return@runOnUiThread
+                }
+
                 if (!isLabMatch && !isPharmacyMatch) {
                     Log.d("DEBUG_OUTSOURCE", "ID mismatch. Skipping.")
                     return@runOnUiThread
@@ -999,6 +1021,10 @@ class HomeActivity1 : AppCompatActivity() {
         refreshType: String? = null
     ) {
         updateCounterTokenOnUi(counterId, tokenNumber, bookingId)
+
+        if (!refreshType.isNullOrBlank()) {
+            getCountersDetails(refreshType)
+        }
 
         if (skipAnnouncement) return
 
