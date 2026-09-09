@@ -35,19 +35,75 @@
             android:layout_width="match_parent"
             android:layout_height="1dp"
             android:background="@color/colorPrimary" />
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/recyclerView"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:focusable="true"
-            android:nextFocusDown="@id/recyclerView"
-            android:descendantFocusability="afterDescendants"
 
-            />
-       <!-- <include layout="@layout/item_settings"/>
-        <include layout="@layout/item_settings"/>
-        <include layout="@layout/item_settings"/>
-        <include layout="@layout/item_settings"/>-->
+        <androidx.core.widget.NestedScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/recyclerView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:nestedScrollingEnabled="false"
+                    android:focusable="true"
+                    android:nextFocusDown="@id/recyclerViewCounters"
+                    android:descendantFocusability="afterDescendants" />
+
+                <TextView
+                    android:id="@+id/tv_choose_counter"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="24dp"
+                    android:layout_marginBottom="8dp"
+                    android:text="@string/choose_your_counter"
+                    android:textColor="@color/black"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tv_no_counters"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:text="@string/no_counters_configured"
+                    android:textColor="@color/black"
+                    android:textSize="16sp"
+                    android:visibility="gone" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/recyclerViewCounters"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:nestedScrollingEnabled="false"
+                    android:focusable="true"
+                    android:nextFocusDown="@id/btn_submit_counter"
+                    android:descendantFocusability="afterDescendants" />
+
+                <Button
+                    android:id="@+id/btn_submit_counter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:layout_gravity="start"
+                    android:layout_marginTop="12dp"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/buttonbgsave"
+                    android:gravity="center"
+                    android:minWidth="140dp"
+                    android:paddingStart="24dp"
+                    android:paddingEnd="24dp"
+                    android:text="@string/submit"
+                    android:textAllCaps="false"
+                    android:textColor="@color/white"
+                    android:textSize="16sp" />
+            </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
 
     </LinearLayout>
 

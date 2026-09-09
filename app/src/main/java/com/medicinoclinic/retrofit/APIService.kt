@@ -46,9 +46,18 @@ interface APIService {
 //        @Query("type")type : String,
 //    ): Call<ResponseBody>
 
-    @GET("tv/tvHome")
+    @GET("tv/tvHome_new")
     fun getHome(
         @Query("type")type : String,
+    ): Call<ResponseBody>
+
+    @GET("tv/displayCounters")
+    fun getDisplayCounters(): Call<ResponseBody>
+
+    @POST("tv/displayCounters")
+    @FormUrlEncoded
+    fun saveDisplayCounters(
+        @Field("selected_counter_ids") selected_counter_ids: String
     ): Call<ResponseBody>
 
 //    @POST("tv/addDoctor")
@@ -102,7 +111,7 @@ interface APIService {
         @Field("doctor_id") doctor_id: String,
     ): Call<ResponseBody>
 
-    @POST("tv/convertTokenTextToSpeech")
+    @POST("tv/convertTokenTextToSpeech_new")
     @FormUrlEncoded
     fun convertTokenTextToSpeech(
         @Field("token_number") token_number: String,
@@ -110,7 +119,7 @@ interface APIService {
         @Field("booking_id") booking_id: String,
     ): Call<ResponseBody>
 
-    @POST("tv/convertOutsourceTokenTextToSpeech")
+    @POST("tv/convertOutsourceTokenTextToSpeech_new")
     @FormUrlEncoded
     fun convertOutsourceTokenTextToSpeech(
         @Field("outsource_call_id") outsource_call_id: String,

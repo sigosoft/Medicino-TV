@@ -1,6 +1,5 @@
 package com.medicinoclinic.adapter
 
-import android.content.Intent
 import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
@@ -10,12 +9,13 @@ import android.widget.TextView
 import androidx.core.widget.TextViewCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.medicinoclinic.R
-import com.medicinoclinic.SettingsActivity
 import com.medicinoclinic.model.CounterListingModel
 import com.medicinoclinic.utils.CounterScrollTextView
 
-class CounterAdapter(private var mList: List<CounterListingModel>) :
-    RecyclerView.Adapter<CounterAdapter.ViewHolder>() {
+class CounterAdapter(
+    private var mList: List<CounterListingModel>,
+    private val onCounterClick: (() -> Unit)? = null
+) : RecyclerView.Adapter<CounterAdapter.ViewHolder>() {
 
     private var scrollLayoutMode = VIEW_TYPE_DEFAULT
 
@@ -84,8 +84,8 @@ class CounterAdapter(private var mList: List<CounterListingModel>) :
             fitTokenToBounds(holder)
         }
 
-        holder.itemView.setOnClickListener { view ->
-            view.context.startActivity(Intent(view.context, SettingsActivity::class.java))
+        holder.itemView.setOnClickListener {
+            onCounterClick?.invoke()
         }
     }
 
