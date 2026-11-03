@@ -7,8 +7,6 @@ import android.view.Choreographer
 import android.view.Gravity
 import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.widget.TextViewCompat
-import kotlin.math.abs
-
 /**
  * Smooth seamless horizontal ticker for counter names.
  * scroll_up=1: scrolling ticker
@@ -140,18 +138,13 @@ class CounterScrollTextView @JvmOverloads constructor(
         val words = trimmed.split(Regex("\\s+")).filter { it.isNotEmpty() }
         if (words.size <= 1) return trimmed
 
-        var bestSplit = 1
-        var bestDiff = Int.MAX_VALUE
-        for (i in 1 until words.size) {
-            val line1 = words.take(i).joinToString(" ")
-            val line2 = words.drop(i).joinToString(" ")
-            val diff = abs(line1.length - line2.length)
-            if (diff < bestDiff) {
-                bestDiff = diff
-                bestSplit = i
-            }
+        // Second word is a number → keep the full name on one line
+        if (words[1].all { it.isDigit() }) {
+            return trimmed
         }
-        return words.take(bestSplit).joinToString(" ") + "\n" + words.drop(bestSplit).joinToString(" ")
+
+        // Second word is a string → show on 2 lines
+        return words.first() + "\n" + words.drop(1).joinToString(" ")
     }
 
     private fun fitStaticTextToBounds() {
