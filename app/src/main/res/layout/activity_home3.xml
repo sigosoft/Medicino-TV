@@ -16,6 +16,7 @@
         android:layout_weight="4.7"
         android:orientation="horizontal"
         android:background="@color/white"
+        android:clipChildren="true"
         android:weightSum="5">
 
         <!-- Left Panel -->
@@ -24,6 +25,8 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1.3"
+            android:clipChildren="true"
+            android:clipToPadding="true"
             android:orientation="vertical">
 
             <androidx.recyclerview.widget.RecyclerView
@@ -31,6 +34,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
+                android:clipChildren="true"
+                android:clipToPadding="true"
                 android:descendantFocusability="afterDescendants"
                 android:nestedScrollingEnabled="false"
                 android:overScrollMode="never"
@@ -41,6 +46,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
+                android:clipChildren="true"
+                android:clipToPadding="true"
                 android:descendantFocusability="afterDescendants"
                 android:nestedScrollingEnabled="false"
                 android:overScrollMode="never"
@@ -91,8 +98,9 @@
                     android:layout_height="match_parent"
                     android:adjustViewBounds="true"
                     android:layout_gravity="center"
-                    app:use_controller="false"
-                    app:resize_mode="fit" />
+                    app:resize_mode="fit"
+                    app:surface_type="texture_view"
+                    app:use_controller="false" />
 
 
                 <LinearLayout

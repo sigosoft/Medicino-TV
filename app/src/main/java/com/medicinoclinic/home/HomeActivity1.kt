@@ -32,6 +32,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.Toast
 import android.widget.VideoView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -117,6 +118,13 @@ class HomeActivity1 : AppCompatActivity() {
     var todayString: String? = null
     var baseClass = BaseClass()
     lateinit var mainHandler: Handler
+
+    private val counterSetupLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == RESULT_OK) {
+                type?.let { getHomeDetails(it) }
+            }
+        }
     var adapter: SliderAdapter? = null
     var sliderDataArrayList: ArrayList<SliderDataModel> = ArrayList()
     var sliderView: SliderView? = null
@@ -221,9 +229,9 @@ class HomeActivity1 : AppCompatActivity() {
         options.setCluster("ap2")
 
         // dev
-         pusher = Pusher("e8a2220b4c88b31f047b", options)
+        // pusher = Pusher("e8a2220b4c88b31f047b", options)
         // live key
-        // pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
+         pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
         activePusher = pusher
 
         pusher.connect(object : ConnectionEventListener {
@@ -237,9 +245,9 @@ class HomeActivity1 : AppCompatActivity() {
         }, ConnectionState.ALL)
 
         // dev channel
-         val channel: Channel = pusher.subscribe("medicino-tv-stagging")
+        // val channel: Channel = pusher.subscribe("medicino-tv-stagging")
         // live channel
-        // val channel: Channel = pusher.subscribe(PUSHER_CHANNEL)
+         val channel: Channel = pusher.subscribe(PUSHER_CHANNEL)
 
         channel.bind("token-called") { event ->
             Log.d("PUSHER_DEBUG", "--------------------")
@@ -251,7 +259,6 @@ class HomeActivity1 : AppCompatActivity() {
 
                 val jsonObject = JSONObject(event.data)
                 val tokenNumber = jsonObject.optString("token_number", "")
-                if (tokenNumber.isNullOrEmpty() || tokenNumber == "null") return@runOnUiThread
 
                 // Clinic/Doctor: ID match → convertTextToSpeech
                 val doctorId = jsonObject.opt("doctor_id")?.toString()?.trim().orEmpty()
@@ -268,7 +275,9 @@ class HomeActivity1 : AppCompatActivity() {
                         !logged_doctor_id.isNullOrBlank() &&
                         logged_doctor_id == doctorId
 
-                if (isClinicMatch || isDoctorMatch) {
+                if (!tokenNumber.isNullOrEmpty() && tokenNumber != "null" &&
+                    (isClinicMatch || isDoctorMatch)
+                ) {
                     updateDoctorTokenOnUi(doctorId, tokenNumber, roomNumber)
                     convertTextToSpeech(tokenNumber, roomNumber, doctorId)
                     return@runOnUiThread
@@ -279,7 +288,6 @@ class HomeActivity1 : AppCompatActivity() {
                 val pharmacyId = jsonObject.opt("pharmacy_id")?.toString()?.trim().orEmpty()
                 val counterId = jsonObject.opt("counter_id")?.toString()?.trim().orEmpty()
                 val bookingId = jsonObject.opt("counter_booking_id")?.toString()?.trim().orEmpty().ifEmpty { "0" }
-                if (counterId.isEmpty() || counterId == "-1" || counterId == "null") return@runOnUiThread
 
                 val isLabMatch = !labId.isNullOrEmpty() &&
                         labId != "-1" &&
@@ -291,6 +299,18 @@ class HomeActivity1 : AppCompatActivity() {
                         pharmacyId != "null" &&
                         !logged_pharmacy_id.isNullOrBlank() &&
                         logged_pharmacy_id == pharmacyId
+
+                val hasInvalidCounterFields = tokenNumber.isNullOrEmpty() || tokenNumber == "null" ||
+                        counterId.isEmpty() || counterId == "-1" || counterId == "null"
+                if (hasInvalidCounterFields) {
+                    if (isLabMatch) {
+                        getCountersDetails("3")
+                    } else if (isPharmacyMatch) {
+                        getCountersDetails("4")
+                    }
+                    return@runOnUiThread
+                }
+
                 if (!isLabMatch && !isPharmacyMatch) return@runOnUiThread
 
                 handleCounterTokenCalled(
@@ -313,8 +333,6 @@ class HomeActivity1 : AppCompatActivity() {
                 val outsourceCallId = jsonObject.optString("outsource_call_id", "")
                 val counterId = jsonObject.opt("counter_id")?.toString()?.trim().orEmpty()
                 val tokenNumber = jsonObject.optString("token_number", "")
-                if (tokenNumber.isNullOrEmpty() || tokenNumber == "null") return@runOnUiThread
-                if (counterId.isEmpty() || counterId == "-1" || counterId == "null") return@runOnUiThread
 
                 val labId = jsonObject.opt("lab_id")?.toString()?.trim().orEmpty()
                 val pharmacyId = jsonObject.opt("pharmacy_id")?.toString()?.trim().orEmpty()
@@ -328,6 +346,18 @@ class HomeActivity1 : AppCompatActivity() {
                         pharmacyId != "null" &&
                         !logged_pharmacy_id.isNullOrBlank() &&
                         logged_pharmacy_id == pharmacyId
+
+                val hasInvalidCounterFields = tokenNumber.isNullOrEmpty() || tokenNumber == "null" ||
+                        counterId.isEmpty() || counterId == "-1" || counterId == "null"
+                if (hasInvalidCounterFields) {
+                    if (isLabMatch) {
+                        getCountersDetails("3")
+                    } else if (isPharmacyMatch) {
+                        getCountersDetails("4")
+                    }
+                    return@runOnUiThread
+                }
+
                 if (!isLabMatch && !isPharmacyMatch) {
                     Log.d("DEBUG_OUTSOURCE", "ID mismatch. Skipping.")
                     return@runOnUiThread
@@ -345,8 +375,7 @@ class HomeActivity1 : AppCompatActivity() {
         }
 
         btn_settings!!.setOnClickListener(View.OnClickListener {
-            val intent = Intent(this, SettingsActivity::class.java)
-            startActivity(intent)
+            openSettingsScreen()
         })
 
         if (!hasUsageStatsPermission(this)) {
@@ -500,6 +529,11 @@ class HomeActivity1 : AppCompatActivity() {
                     var jsonObject: JSONObject? = null
                     jsonObject = JSONObject(response_from_server)
                     var jObj_data = jsonObject.getJSONObject("data")
+
+                    if (requiresCounterSetup(jObj_data) && !isCountersSet(jObj_data)) {
+                        openCounterSetupScreen()
+                        return
+                    }
 
                     var jsonArry_doctors = jObj_data.getJSONArray("doctors")
                     var jsonArray_counter_tokens = jObj_data.getJSONArray("counter_tokens")
@@ -671,11 +705,50 @@ class HomeActivity1 : AppCompatActivity() {
         pusher.connect()
     }
 
+    private fun openSettingsScreen() {
+        if (type == "3" || type == "4") {
+            openCounterSetupScreen()
+        } else {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+    }
+
+    private fun openCounterSetupScreen() {
+        counterSetupLauncher.launch(Intent(this, SettingsActivity::class.java))
+    }
+
+    private fun requiresCounterSetup(data: org.json.JSONObject): Boolean {
+        val user = data.optJSONObject("user") ?: return false
+        return hasEntityId(user, "pharmacy_id") || hasEntityId(user, "lab_id")
+    }
+
+    private fun hasEntityId(jsonObject: org.json.JSONObject, key: String): Boolean {
+        if (!jsonObject.has(key) || jsonObject.isNull(key)) return false
+        val value = jsonObject.opt(key).toString().trim()
+        return value.isNotEmpty() &&
+            !value.equals("null", ignoreCase = true) &&
+            value != "-1" &&
+            value != "0"
+    }
+
     private fun isValidCounterId(counterId: String): Boolean {
         return counterId.isNotBlank() &&
             counterId != "-1" &&
             counterId != "0" &&
             !counterId.equals("null", ignoreCase = true)
+    }
+
+    private fun isCountersSet(data: org.json.JSONObject): Boolean {
+        if (!data.has("is_counters_set") || data.isNull("is_counters_set")) return true
+        val value = data.opt("is_counters_set")
+        return when (value) {
+            is Boolean -> value
+            is Number -> value.toInt() != 0
+            else -> {
+                val text = value.toString().trim()
+                text.equals("true", ignoreCase = true) || text == "1"
+            }
+        }
     }
 
     private fun hasCounterDisplayData(counterObject: org.json.JSONObject): Boolean {
@@ -732,7 +805,7 @@ class HomeActivity1 : AppCompatActivity() {
         recyclerViewCounter?.overScrollMode = View.OVER_SCROLL_NEVER
 
         if (recyclerViewCounter?.adapter == null) {
-            counterAdapter = CounterAdapter(listOf())
+            counterAdapter = CounterAdapter(listOf()) { openCounterSetupScreen() }
             recyclerViewCounter?.adapter = counterAdapter
         } else {
             counterAdapter = recyclerViewCounter?.adapter as CounterAdapter
@@ -1000,6 +1073,10 @@ class HomeActivity1 : AppCompatActivity() {
     ) {
         updateCounterTokenOnUi(counterId, tokenNumber, bookingId)
 
+        if (!refreshType.isNullOrBlank()) {
+            getCountersDetails(refreshType)
+        }
+
         if (skipAnnouncement) return
 
         ensureAnnouncementQueueReady()
@@ -1066,7 +1143,7 @@ class HomeActivity1 : AppCompatActivity() {
     private fun ensureCounterAdapterReady() {
         if (recyclerViewCounter == null) return
         if (recyclerViewCounter?.adapter == null || !::counterAdapter.isInitialized) {
-            counterAdapter = CounterAdapter(listOf())
+            counterAdapter = CounterAdapter(listOf()) { openCounterSetupScreen() }
             recyclerViewCounter?.layoutManager = LinearLayoutManager(this@HomeActivity1)
             recyclerViewCounter?.adapter = counterAdapter
             if (paginatedCounters.isNotEmpty()) {

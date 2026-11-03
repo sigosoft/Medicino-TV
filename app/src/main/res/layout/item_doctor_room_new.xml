@@ -1,22 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="match_parent"
     android:background="@drawable/focus"
+    android:clipChildren="true"
+    android:clipToPadding="true"
     android:focusable="true"
-    android:paddingStart="10dp"
-    android:paddingEnd="10dp"
     android:focusableInTouchMode="true"
     android:orientation="vertical"
-    android:padding="0dp">
+    android:paddingStart="8dp"
+    android:paddingEnd="8dp"
+    android:weightSum="10">
 
     <TextView
         android:id="@+id/tv_name"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="0dp"
+        android:layout_weight="2.4"
         android:ellipsize="marquee"
         android:focusableInTouchMode="true"
-        android:gravity="start|center_vertical"
+        android:gravity="center"
+        android:includeFontPadding="false"
         android:marqueeRepeatLimit="marquee_forever"
         android:scrollHorizontally="true"
         android:singleLine="true"
@@ -26,9 +30,12 @@
         android:textStyle="bold" />
 
     <TextView
+        android:id="@+id/tv_room_label"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:gravity="center"
+        android:includeFontPadding="false"
         android:text="ROOM"
         android:textColor="@color/black"
         android:textSize="25sp"
@@ -37,39 +44,40 @@
     <TextView
         android:id="@+id/tv_room"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="0dp"
+        android:layout_weight="2.4"
         android:gravity="center"
+        android:includeFontPadding="false"
+        android:lineSpacingExtra="0dp"
         android:text="01"
         android:textColor="@color/black"
         android:textSize="63sp"
-        android:textStyle="bold"
-        android:includeFontPadding="false"
-        android:lineSpacingExtra="0dp"
-        android:lineSpacingMultiplier="1"/>
+        android:textStyle="bold" />
 
     <TextView
+        android:id="@+id/tv_token_label"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:gravity="center"
+        android:includeFontPadding="false"
+        android:lineSpacingExtra="0dp"
         android:text="TOKEN"
         android:textColor="@color/black"
         android:textSize="25sp"
-        android:textStyle="normal"
-        android:includeFontPadding="false"
-        android:lineSpacingExtra="0dp"
-        android:lineSpacingMultiplier="1"/>
+        android:textStyle="normal" />
 
     <TextView
         android:id="@+id/tv_token"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="0dp"
+        android:layout_weight="3.2"
         android:gravity="center"
+        android:includeFontPadding="false"
+        android:lineSpacingExtra="0dp"
         android:text="W-1234"
         android:textColor="@color/black"
         android:textSize="63sp"
-        android:textStyle="bold"
-        android:includeFontPadding="false"
-        android:lineSpacingExtra="0dp"
-        android:lineSpacingMultiplier="1"/>
+        android:textStyle="bold" />
 
 </LinearLayout>

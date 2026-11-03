@@ -25,4 +25,9 @@
     <string name="enter_username">Please enter your username</string>
     <string name="enter_password">Please enter your password</string>
     <string name="password_length">Please enter a password of length 6</string>
+    <string name="choose_your_counter">Choose your counter</string>
+    <string name="submit">Submit</string>
+    <string name="counter_selection_saved">Counter selection saved</string>
+    <string name="no_counters_configured">No counters have been configured on the backend</string>
+    <string name="select_at_least_one_counter">Please select at least one counter</string>
 </resources>
