@@ -106,6 +106,14 @@
             android:icon="@drawable/banner"
             android:label="@string/app_name"
             android:screenOrientation="landscape"></activity>
+
+        <!-- Sentry crash reporting -->
+        <meta-data android:name="io.sentry.dsn" android:value="https://e48df5cd3614c0b034a9fd70a32e6bfc@o4512366604189696.ingest.us.sentry.io/4512367418802176" />
+        <!-- "production" while RetrofitClient/Pusher point at live; use "staging" for staging builds -->
+        <meta-data android:name="io.sentry.environment" android:value="production" />
+        <!-- screenshots could show patient names/tokens on the TV -->
+        <meta-data android:name="io.sentry.attach-screenshot" android:value="false" />
+        <meta-data android:name="io.sentry.attach-view-hierarchy" android:value="true" />
     </application>
 
 </manifest>
