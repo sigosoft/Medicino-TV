@@ -127,6 +127,10 @@ interface APIService {
         @Field("token_number") token_number: String,
     ): Call<ResponseBody>
 
+    /** Private Pusher channels this TV may join (its clinic / doctor / lab / pharmacy). */
+    @GET("tv/broadcastChannels")
+    fun getBroadcastChannels(): Call<ResponseBody>
+
     @GET("api/logout")
     fun logout(): Call<ResponseBody>
 }

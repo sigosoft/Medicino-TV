@@ -3,6 +3,7 @@ package com.medicinoclinic
 import android.app.AppOpsManager
 import android.app.UiModeManager
 import android.app.usage.UsageStatsManager
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -14,6 +15,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -96,9 +98,21 @@ class IntroductionActivity : AppCompatActivity() {
         // Check permission in onResume so the dialog dismisses automatically when user returns from settings
         if (isUsageStatsPermissionGranted()) {
             permissionDialog?.dismiss()
-        } else {
+        } else if (!usageAccessPromptDismissed()) {
             showPermissionDialog()
         }
+    }
+
+    /**
+     * QA-02: the dialog is only for optional data-usage reporting. Once the user has said Cancel
+     * (or Back), or this TV turned out to have no Usage Access screen, don't ask again on every
+     * launch. Stored per device, so logging out doesn't bring it back.
+     */
+    private fun usageAccessPromptDismissed(): Boolean =
+        baseClass.getSharedPreferance(applicationContext, PREF_USAGE_PROMPT_DISMISSED, "false") == "true"
+
+    private fun rememberUsageAccessPromptDismissed() {
+        baseClass.setSharedPreferance(applicationContext, PREF_USAGE_PROMPT_DISMISSED, "true")
     }
 
     private fun showPermissionDialog() {
@@ -106,15 +120,39 @@ class IntroductionActivity : AppCompatActivity() {
             permissionDialog = AlertDialog.Builder(this@IntroductionActivity)
                 .setTitle("Permission Required")
                 .setMessage("To monitor your app's data usage, please grant Usage Access permission.")
-                .setCancelable(false)
-                .setPositiveButton("Grant") { _, _ ->
-                    val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    startActivity(intent)
-                }
-                .setNegativeButton("Cancel", null)
+                // Back closes it, same as Cancel.
+                .setCancelable(true)
+                .setOnCancelListener { rememberUsageAccessPromptDismissed() }
+                .setPositiveButton("Grant") { _, _ -> openUsageAccessSettings() }
+                .setNegativeButton("Cancel") { _, _ -> rememberUsageAccessPromptDismissed() }
                 .show()
+            // Start with GRANT focused so the first OK on the remote does something.
+            permissionDialog?.getButton(AlertDialog.BUTTON_POSITIVE)?.requestFocus()
         }
+    }
+
+    /**
+     * QA-02: many Android TV / Google TV / Fire TV devices have no Usage Access screen, and
+     * starting it there crashed the app. Open it where it exists; otherwise explain and carry on.
+     */
+    private fun openUsageAccessSettings() {
+        val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            startActivity(intent)
+        } catch (e: ActivityNotFoundException) {
+            Log.w("USAGE", "No Usage Access screen on this device")
+            rememberUsageAccessPromptDismissed()
+            Toast.makeText(this, R.string.usage_access_unavailable, Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Log.e("USAGE", "Could not open Usage Access settings", e)
+            rememberUsageAccessPromptDismissed()
+            Toast.makeText(this, R.string.usage_access_unavailable, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    companion object {
+        private const val PREF_USAGE_PROMPT_DISMISSED = "usage_access_prompt_dismissed"
     }
 
     private fun adjustLayoutForDevice() {

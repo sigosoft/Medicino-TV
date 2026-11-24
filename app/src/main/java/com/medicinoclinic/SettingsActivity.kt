@@ -17,6 +17,8 @@ import com.medicinoclinic.model.CounterSettingsModel
 import com.medicinoclinic.model.DoctorsModel
 import com.medicinoclinic.retrofit.APIService
 import com.medicinoclinic.utils.BaseClass
+import com.medicinoclinic.utils.SessionManager
+import android.app.AlertDialog
 import okhttp3.ResponseBody
 import org.json.JSONArray
 import org.json.JSONObject
@@ -73,7 +75,7 @@ class SettingsActivity : FragmentActivity() {
 
         btn_logout!!.setOnClickListener {
             if (logoutClicked == false) {
-                logout()
+                confirmLogout()
             }
         }
 
@@ -143,86 +145,83 @@ class SettingsActivity : FragmentActivity() {
         })
     }
 
+    /**
+     * QA-15: one OK press used to log the TV out at once. Ask first; "Cancel" is focused so a
+     * stray press on the remote does nothing.
+     */
+    private fun confirmLogout() {
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.logout_confirm_title)
+            .setMessage(R.string.logout_confirm_message)
+            .setPositiveButton(R.string.logout_confirm_yes) { _, _ ->
+                if (logoutClicked == false) logout()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.requestFocus()
+    }
+
+    /**
+     * Tells the server to end this TV's login (so the token stops working there), then ends the
+     * session on the TV. The TV is logged out locally whatever the server answers: before, a
+     * failed request (no network, expired token, server error) left Logout stuck (H7).
+     */
     private fun logout() {
         logoutClicked = true
+        val progressDialog = ProgressDialog(this@SettingsActivity, R.style.MyTheme)
+        progressDialog.setProgressStyle(android.R.style.Widget_ProgressBar_Large)
+        progressDialog.setCancelable(false)
+        progressDialog.show()
+
         val mAPIService = RetrofitClient.ApiUtils.apiService1
         mAPIService.logout().enqueue(object : Callback<ResponseBody> {
             override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
+                // No body logging (it would contain the token); the status is enough for QA.
+                Log.i("Logout", "Server logout returned HTTP ${response.code()}")
+                var message: String? = null
+                var serverConfirmed = false
                 if (response.isSuccessful) {
-                    val response_from_server = response.body()!!.string()
-                    val jsonObject = JSONObject(response_from_server)
-                    print("Response")
-                    Log.d("Response", "logout: $response_from_server")
-                    val message = jsonObject.getString("message")
-                    val status = jsonObject.getBoolean("status")
-                    if (status) {
-                        Toast.makeText(this@SettingsActivity, message, Toast.LENGTH_LONG).show()
-                        baseClass.setSharedPreferance(applicationContext, "login_status", "false")
-                        baseClass.setSharedPreferance(applicationContext, "date", "")
-                        baseClass.setSharedPreferance(applicationContext, "apiCall", "false")
-                        baseClass.setSharedPreferance(applicationContext, "token", "")
-                        baseClass.setSharedPreferance(applicationContext, "clinic_id", "")
-                        baseClass.setSharedPreferance(applicationContext, "doctor_id", "")
-                        baseClass.setSharedPreferance(applicationContext, "lab_id", "")
-                        baseClass.setSharedPreferance(applicationContext, "pharmacy_id", "")
-                        baseClass.setSharedPreferance(applicationContext, "type", "")
-                        baseClass.setSharedPreferance(applicationContext, SELECTED_COUNTER_IDS, "")
-                        RetrofitClient.bearer_token = ""
-
-                        if (type.equals("1")) {
-                            val intent = Intent(applicationContext, ClinicLoginActivity::class.java)
-                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                            startActivity(intent)
-                            finish()
-                        } else if (type.equals("2")) {
-                            val intent = Intent(applicationContext, DoctorLoginActivity::class.java)
-                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                            startActivity(intent)
-                            finish()
-                        } else if (type.equals("3")) {
-                            val intent = Intent(applicationContext, LabLoginActivity::class.java)
-                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                            startActivity(intent)
-                            finish()
-                        } else {
-                            val intent = Intent(applicationContext, PharmacyLoginActivity::class.java)
-                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                            startActivity(intent)
-                            finish()
-                        }
-                    }
-                } else {
-                    if (response.code() == 401) {
-                        Toast.makeText(
-                            this@SettingsActivity,
-                            getString(R.string.unauthenticated),
-                            Toast.LENGTH_LONG
-                        ).show()
-                    } else if (response.code() == 500) {
-                        Log.d("Response", "logout: ${response.errorBody()}")
-                        Toast.makeText(
-                            this@SettingsActivity,
-                            getString(R.string.api_error),
-                            Toast.LENGTH_LONG
-                        ).show()
-                    } else {
-                        Toast.makeText(
-                            this@SettingsActivity,
-                            getString(R.string.server_error),
-                            Toast.LENGTH_LONG
-                        ).show()
+                    try {
+                        val jsonObject = JSONObject(response.body()?.string().orEmpty())
+                        serverConfirmed = jsonObject.optBoolean("status", false)
+                        message = jsonObject.optString("message").takeIf { it.isNotBlank() }
+                    } catch (e: Exception) {
+                        Log.e("Logout", "Could not read logout response", e)
                     }
                 }
+                finishLogout(progressDialog, serverConfirmed, message)
             }
 
             override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
-                Toast.makeText(
-                    this@SettingsActivity,
-                    getString(R.string.response_failed),
-                    Toast.LENGTH_LONG
-                ).show()
+                Log.w("Logout", "Server logout request failed", t)
+                finishLogout(progressDialog, serverConfirmed = false, message = null)
             }
         })
+    }
+
+    private fun finishLogout(progressDialog: ProgressDialog, serverConfirmed: Boolean, message: String?) {
+        if (isFinishing || isDestroyed) return
+        try {
+            progressDialog.dismiss()
+        } catch (e: Exception) {
+            // Dialog already gone.
+        }
+        // A 401 from the server means the login had already expired; RetrofitClient's 401
+        // handler has then logged the TV out and opened the login screen. Don't do it twice.
+        if (baseClass.getSharedPreferance(applicationContext, "login_status", "false") != "true") {
+            finish()
+            return
+        }
+        val text = when {
+            serverConfirmed -> message ?: getString(R.string.logout_done)
+            else -> getString(R.string.logout_done_offline)
+        }
+        Toast.makeText(applicationContext, text, Toast.LENGTH_LONG).show()
+
+        val loggedOutType = type
+        SessionManager.clearSession(applicationContext)
+        SessionManager.openLoginScreen(applicationContext, loggedOutType)
+        finish()
     }
 
     private fun loadDisplayCounters() {

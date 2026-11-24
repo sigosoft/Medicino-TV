@@ -1,4 +1,7 @@
+import android.content.Context
+import com.medicinoclinic.BuildConfig
 import com.medicinoclinic.retrofit.APIService
+import com.medicinoclinic.utils.SessionManager
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -9,6 +12,9 @@ object RetrofitClient {
 
     var retrofit: Retrofit? = null
     var bearer_token: String? = null
+
+    /** Set in App.onCreate; lets the 401 check below send the TV back to login. */
+    var appContext: Context? = null
 
     fun getClient(baseUrl: String): Retrofit? {
 //        if (retrofit == null) {
@@ -42,11 +48,18 @@ object RetrofitClient {
                 .readTimeout(30, TimeUnit.SECONDS)
                 .writeTimeout(15, TimeUnit.SECONDS)
                 .addInterceptor { chain ->
+                    val sentToken = bearer_token
                     val newRequest = chain.request().newBuilder()
-                        .addHeader("Authorization", "Bearer $bearer_token")
+                        .addHeader("Authorization", "Bearer $sentToken")
                         .addHeader("Content-Type", "application/json")
                         .build()
-                    chain.proceed(newRequest)
+                    val response = chain.proceed(newRequest)
+                    // L6: the server rejected the TV's login (expired, revoked or blocked).
+                    // Clear the session and go back to the login screen.
+                    if (response.code == 401) {
+                        appContext?.let { SessionManager.onUnauthorized(it, sentToken) }
+                    }
+                    response
                 }.build()
 
             retrofit = Retrofit.Builder()
@@ -67,12 +80,10 @@ object RetrofitClient {
 //         val BASE_URL = "https://services.dev.medicinohealthtech.in/"
 //         val VIDEO_URL = "https://services.dev.medicinohealthtech.in/storage/"
 
-        val BASE_URL =
-         //   "https://staging.medicino.in/"
-           "https://api.brightideainfotech.tech/"
-        val VIDEO_URL =
-         //   "https://staging.medicino.in/storage/"
-          "https://api.brightideainfotech.tech/storage/"
+        // Set per build flavor in app/build.gradle: staging -> staging.medicino.in,
+        // production -> api.brightideainfotech.tech.
+        val BASE_URL = BuildConfig.BASE_URL
+        val VIDEO_URL = BuildConfig.VIDEO_URL
 
         val apiService: APIService
             get() = RetrofitClient.getClient(BASE_URL)!!.create(APIService::class.java)

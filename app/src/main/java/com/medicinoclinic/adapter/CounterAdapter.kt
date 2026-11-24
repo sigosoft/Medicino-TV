@@ -60,7 +60,9 @@ class CounterAdapter(
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int, payloads: MutableList<Any>) {
         if (payloads.contains(PAYLOAD_TOKEN)) {
-            bindToken(holder, mList[position])
+            // Only the number changed: swap the text, nothing else. The auto-size set up on the
+            // full bind already fits the new number, so re-running it would make it jump.
+            setTokenText(holder, mList[position])
             return
         }
         onBindViewHolder(holder, position)
@@ -103,6 +105,11 @@ class CounterAdapter(
     override fun getItemCount(): Int = mList.size
 
     private fun bindToken(holder: ViewHolder, counter: CounterListingModel) {
+        setTokenText(holder, counter)
+        fitTokenToBounds(holder)
+    }
+
+    private fun setTokenText(holder: ViewHolder, counter: CounterListingModel) {
         val tokenText = counter.token.trim()
         val displayToken = when {
             tokenText.isEmpty() || tokenText.equals("null", ignoreCase = true) -> "0"
@@ -112,7 +119,6 @@ class CounterAdapter(
         if (holder.tv_token.text?.toString() != displayToken) {
             holder.tv_token.text = displayToken
         }
-        fitTokenToBounds(holder)
     }
 
     private fun bindCounterNameNow(holder: ViewHolder, counter: CounterListingModel) {
@@ -216,6 +222,30 @@ class CounterAdapter(
         count == 3 -> VIEW_TYPE_MEDIUM
         count == 4 -> VIEW_TYPE_LARGE
         else -> VIEW_TYPE_DEFAULT
+    }
+
+    /** True when [newList] shows the same counters, in the same order, with the same names. */
+    fun hasSameRows(newList: List<CounterListingModel>): Boolean {
+        if (newList.size != mList.size) return false
+        return newList.indices.all { i ->
+            val a = mList[i]
+            val b = newList[i]
+            a.counter_id == b.counter_id && a.counter_name == b.counter_name && a.scroll_up == b.scroll_up
+        }
+    }
+
+    /**
+     * Silent refresh: same rows as [hasSameRows], so only redraw the numbers that changed.
+     * Nothing is re-laid out, so the screen doesn't jump.
+     */
+    fun updateTokensInPlace(newList: List<CounterListingModel>) {
+        val old = mList
+        mList = newList
+        for (i in newList.indices) {
+            if (old[i].token.trim() != newList[i].token.trim()) {
+                notifyItemChanged(i, PAYLOAD_TOKEN)
+            }
+        }
     }
 
     fun updateTokenForCounter(counterId: String, newToken: String) {

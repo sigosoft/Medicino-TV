@@ -30,6 +30,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import android.widget.VideoView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -37,6 +38,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.SimpleItemAnimator
 
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.PlaybackException
@@ -51,6 +53,7 @@ import com.google.android.exoplayer2.upstream.DefaultHttpDataSource
 import com.google.android.exoplayer2.upstream.cache.CacheDataSource
 import com.google.android.exoplayer2.util.Util
 import com.medicinoclinic.App
+import com.medicinoclinic.BuildConfig
 import com.medicinoclinic.ContentModel
 import com.medicinoclinic.R
 import com.medicinoclinic.SettingsActivity
@@ -83,7 +86,11 @@ import com.medicinoclinic.model.CounterListingModel
 import com.pusher.client.Pusher
 import com.pusher.client.PusherOptions
 import com.pusher.client.channel.Channel
+import com.pusher.client.channel.PrivateChannelEventListener
+import com.pusher.client.channel.PusherEvent
 import com.pusher.client.channel.SubscriptionEventListener
+import com.pusher.client.util.HttpChannelAuthorizer
+import org.json.JSONArray
 import com.pusher.client.connection.ConnectionEventListener
 import com.pusher.client.connection.ConnectionState
 import com.pusher.client.connection.ConnectionStateChange
@@ -178,6 +185,8 @@ class HomeActivity1 : AppCompatActivity() {
         )
         setContentView(R.layout.activity_home3)
         mainHandler = Handler(Looper.getMainLooper())
+        createStatusBanner()
+        registerNetworkCallback()
         videoView = findViewById(R.id.videoView_ID)
         sliderView = findViewById(R.id.slider)
         lin_video = findViewById(R.id.lin_video)
@@ -225,163 +234,28 @@ class HomeActivity1 : AppCompatActivity() {
         btn_settings?.requestFocus()
         recyclerViewDoctor?.requestFocus()
 
-        val options = PusherOptions()
-        options.setCluster("ap2")
-
-        // dev
-        // pusher = Pusher("e8a2220b4c88b31f047b", options)
-        // live key
-         pusher = Pusher("3ca5933d5ea7c2a5dd5c", options)
-        activePusher = pusher
-
-        pusher.connect(object : ConnectionEventListener {
-            override fun onConnectionStateChange(change: ConnectionStateChange) {
-                Log.d("Pusher", "State changed from ${change.previousState} to ${change.currentState}")
-            }
-
-            override fun onError(message: String?, code: String?, e: Exception?) {
-                Log.e("Pusher", "Error: $message, Code: $code, Exception: $e")
-            }
-        }, ConnectionState.ALL)
-
-        // dev channel
-        // val channel: Channel = pusher.subscribe("medicino-tv-stagging")
-        // live channel
-         val channel: Channel = pusher.subscribe(PUSHER_CHANNEL)
-
-        channel.bind("token-called") { event ->
-            Log.d("PUSHER_DEBUG", "--------------------")
-            Log.d("PUSHER_DEBUG", "TOKEN-CALLED RECEIVED")
-            Log.d("PUSHER_DEBUG", "RAW DATA: ${event.data}")
-            Log.d("PUSHER_DEBUG", "--------------------")
-            runOnUiThread {
-                if (!shouldProcessPusherEvent()) return@runOnUiThread
-
-                val jsonObject = JSONObject(event.data)
-                val tokenNumber = jsonObject.optString("token_number", "")
-
-                // Clinic/Doctor: ID match → convertTextToSpeech
-                val doctorId = jsonObject.opt("doctor_id")?.toString()?.trim().orEmpty()
-                val clinicId = jsonObject.opt("clinic_id")?.toString()?.trim().orEmpty()
-                val roomNumber = jsonObject.optString("room_number", "")
-                val isClinicMatch = !clinicId.isNullOrEmpty() &&
-                        clinicId != "-1" &&
-                        clinicId != "null" &&
-                        !logged_clinic_id.isNullOrBlank() &&
-                        logged_clinic_id == clinicId
-                val isDoctorMatch = !doctorId.isNullOrEmpty() &&
-                        doctorId != "-1" &&
-                        doctorId != "null" &&
-                        !logged_doctor_id.isNullOrBlank() &&
-                        logged_doctor_id == doctorId
-
-                if (!tokenNumber.isNullOrEmpty() && tokenNumber != "null" &&
-                    (isClinicMatch || isDoctorMatch)
-                ) {
-                    updateDoctorTokenOnUi(doctorId, tokenNumber, roomNumber)
-                    convertTextToSpeech(tokenNumber, roomNumber, doctorId)
-                    return@runOnUiThread
-                }
-
-                // Lab/Pharmacy: ID match → convertTokenTextToSpeech
-                val labId = jsonObject.opt("lab_id")?.toString()?.trim().orEmpty()
-                val pharmacyId = jsonObject.opt("pharmacy_id")?.toString()?.trim().orEmpty()
-                val counterId = jsonObject.opt("counter_id")?.toString()?.trim().orEmpty()
-                val bookingId = jsonObject.opt("counter_booking_id")?.toString()?.trim().orEmpty().ifEmpty { "0" }
-
-                val isLabMatch = !labId.isNullOrEmpty() &&
-                        labId != "-1" &&
-                        labId != "null" &&
-                        !logged_lab_id.isNullOrBlank() &&
-                        logged_lab_id == labId
-                val isPharmacyMatch = !pharmacyId.isNullOrEmpty() &&
-                        pharmacyId != "-1" &&
-                        pharmacyId != "null" &&
-                        !logged_pharmacy_id.isNullOrBlank() &&
-                        logged_pharmacy_id == pharmacyId
-
-                val hasInvalidCounterFields = tokenNumber.isNullOrEmpty() || tokenNumber == "null" ||
-                        counterId.isEmpty() || counterId == "-1" || counterId == "null"
-                if (hasInvalidCounterFields) {
-                    if (isLabMatch) {
-                        getCountersDetails("3")
-                    } else if (isPharmacyMatch) {
-                        getCountersDetails("4")
-                    }
-                    return@runOnUiThread
-                }
-
-                if (!isLabMatch && !isPharmacyMatch) return@runOnUiThread
-
-                handleCounterTokenCalled(
-                    counterId = counterId,
-                    tokenNumber = tokenNumber,
-                    bookingId = bookingId,
-                    announceOutsource = false,
-                    refreshType = if (isLabMatch) "3" else "4"
-                )
-            }
-        }
-
-        channel.bind("outsource-token-called") { event ->
-            Log.d("PUSHER_DEBUG", "OUTSOURCE-TOKEN-CALLED RECEIVED")
-            Log.d("PUSHER_DEBUG", "RAW DATA: ${event.data}")
-            runOnUiThread {
-                if (!shouldProcessPusherEvent()) return@runOnUiThread
-
-                val jsonObject = JSONObject(event.data)
-                val outsourceCallId = jsonObject.optString("outsource_call_id", "")
-                val counterId = jsonObject.opt("counter_id")?.toString()?.trim().orEmpty()
-                val tokenNumber = jsonObject.optString("token_number", "")
-
-                val labId = jsonObject.opt("lab_id")?.toString()?.trim().orEmpty()
-                val pharmacyId = jsonObject.opt("pharmacy_id")?.toString()?.trim().orEmpty()
-                val isLabMatch = !labId.isNullOrEmpty() &&
-                        labId != "-1" &&
-                        labId != "null" &&
-                        !logged_lab_id.isNullOrBlank() &&
-                        logged_lab_id == labId
-                val isPharmacyMatch = !pharmacyId.isNullOrEmpty() &&
-                        pharmacyId != "-1" &&
-                        pharmacyId != "null" &&
-                        !logged_pharmacy_id.isNullOrBlank() &&
-                        logged_pharmacy_id == pharmacyId
-
-                val hasInvalidCounterFields = tokenNumber.isNullOrEmpty() || tokenNumber == "null" ||
-                        counterId.isEmpty() || counterId == "-1" || counterId == "null"
-                if (hasInvalidCounterFields) {
-                    if (isLabMatch) {
-                        getCountersDetails("3")
-                    } else if (isPharmacyMatch) {
-                        getCountersDetails("4")
-                    }
-                    return@runOnUiThread
-                }
-
-                if (!isLabMatch && !isPharmacyMatch) {
-                    Log.d("DEBUG_OUTSOURCE", "ID mismatch. Skipping.")
-                    return@runOnUiThread
-                }
-
-                handleCounterTokenCalled(
-                    counterId = counterId,
-                    tokenNumber = tokenNumber,
-                    bookingId = null,
-                    announceOutsource = true,
-                    outsourceCallId = outsourceCallId,
-                    refreshType = if (isLabMatch) "3" else "4"
-                )
-            }
-        }
+        setUpPusher()
 
         btn_settings!!.setOnClickListener(View.OnClickListener {
             openSettingsScreen()
         })
 
         if (!hasUsageStatsPermission(this)) {
+            // QA-01: many Android TV / Google TV / Fire TV devices have no Usage Access screen.
+            // Starting it there threw ActivityNotFoundException and crashed the app after every
+            // login (and on every relaunch, since the session was already saved). Open it only
+            // where it exists; otherwise just carry on without data-usage reporting.
+            // (try/catch rather than resolveActivity(): on Android 11+ package visibility can make
+            // resolveActivity() return null even when the screen exists.)
             val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
+            try {
+                startActivity(intent)
+            } catch (e: ActivityNotFoundException) {
+                Log.w("USAGE", "No Usage Access screen on this device; skipping data-usage reporting")
+            } catch (e: Exception) {
+                Log.e("USAGE", "Could not open Usage Access settings", e)
+            }
         } else {
             Log.d("USAGE", "Permission already granted")
             val dailyUsageBytes = getDailyAppDataUsage(this@HomeActivity1)
@@ -404,6 +278,7 @@ class HomeActivity1 : AppCompatActivity() {
         // Leaving Settings / brief onStop would kill token updates and TTS until restart.
         handler.removeCallbacks(doctorPageRunnable)
         handler.removeCallbacks(counterPageRunnable)
+        stopListPolling()
         super.onStop()
     }
 
@@ -513,11 +388,15 @@ class HomeActivity1 : AppCompatActivity() {
     }
 
     private fun getHomeDetails(type: String) {
+        homeLoadInFlight = true
+        mainHandler.removeCallbacks(homeRetryRunnable)
         var mAPIService: APIService? = null
         mAPIService = RetrofitClient.ApiUtils.apiService1
         mAPIService.getHome(type).enqueue(object : Callback<ResponseBody> {
 
             override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
+                homeLoadInFlight = false
+                if (isFinishing || isDestroyed) return
                 if (response.isSuccessful) {
 
                     contents.clear()
@@ -577,25 +456,7 @@ class HomeActivity1 : AppCompatActivity() {
                         }
 
                         if (doctorsList.isNotEmpty()) {
-                            recyclerViewDoctor?.isVisible = true
-                            btn_settings?.isVisible = false
-                            recyclerViewDoctor?.layoutManager = LinearLayoutManager(this@HomeActivity1)
-
-                            if (recyclerViewDoctor?.adapter == null) {
-                                doctorAdapter = DoctorAdapter(listOf())
-                                recyclerViewDoctor?.adapter = doctorAdapter
-                            } else {
-                                doctorAdapter = recyclerViewDoctor?.adapter as DoctorAdapter
-                            }
-
-                            paginatedDoctors = doctorsList.chunked(pageSize)
-
-                            if (paginatedDoctors.isNotEmpty()) {
-                                handler.removeCallbacks(doctorPageRunnable)
-                                currentPage = 0
-                                doctorAdapter.setDoctors(paginatedDoctors[currentPage])
-                                handler.postDelayed(doctorPageRunnable, 15_000)
-                            }
+                            bindDoctorsToUi(resetPage = true)
                         } else {
                             recyclerViewDoctor?.isVisible = false
                             btn_settings?.isVisible = true
@@ -670,21 +531,242 @@ class HomeActivity1 : AppCompatActivity() {
                         startVideoPlayback()
                     }
 
+                    // QA-07: the screen has its content now; stop retrying, clear the banner.
+                    homeLoaded = true
+                    homeRetryAttempt = 0
+                    markSynced()
+
                 } else {
                     if (response.code() == 401) {
+                        // RetrofitClient sends the TV back to login; nothing to retry.
                         Toast.makeText(this@HomeActivity1, getString(R.string.unauthenticated), Toast.LENGTH_LONG).show()
                     } else if (response.code() == 500) {
                         Toast.makeText(this@HomeActivity1, response.message(), Toast.LENGTH_LONG).show()
+                        if (!homeLoaded) scheduleHomeRetry()
                     } else {
                         Toast.makeText(this@HomeActivity1, response.message(), Toast.LENGTH_LONG).show()
+                        if (!homeLoaded) scheduleHomeRetry()
                     }
                 }
             }
 
             override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
-                Toast.makeText(this@HomeActivity1, getString(R.string.response_failed), Toast.LENGTH_LONG).show()
+                homeLoadInFlight = false
+                if (isFinishing || isDestroyed) return
+                // QA-07: a TV that starts before Wi-Fi is up used to stay blank forever. Show
+                // why on screen (banner) and keep retrying until the first load succeeds.
+                if (!homeLoaded) {
+                    scheduleHomeRetry()
+                } else {
+                    Toast.makeText(this@HomeActivity1, getString(R.string.response_failed), Toast.LENGTH_LONG).show()
+                }
             }
         })
+    }
+
+    // ---------------------------------------------------------------------
+    // QA-07: offline / stale-data state and recovery.
+    //  - The first load (videos, ticker, doctors/counters) is retried with backoff until it works.
+    //  - When the network comes back, Pusher reconnects and the screen reloads by itself.
+    //  - If Pusher drops and gives up, it is reconnected with backoff.
+    //  - A banner across the top says when the TV is offline, can't reach the server, or has
+    //    no live connection, with the time of the last successful update.
+    // ---------------------------------------------------------------------
+
+    @Volatile private var homeLoaded = false
+    @Volatile private var homeLoadInFlight = false
+    private var homeRetryAttempt = 0
+    private val homeRetryRunnable = Runnable {
+        if (!homeLoaded && !homeLoadInFlight && isLoggedIn()) type?.let { getHomeDetails(it) }
+    }
+
+    @Volatile private var networkAvailable = true
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
+    @Volatile private var pusherConnected = false
+    private var pusherDownSinceMs = 0L
+    private var pusherReconnectAttempt = 0
+    private val pusherReconnectRunnable = Runnable {
+        if (isFinishing || isDestroyed || !isLoggedIn()) return@Runnable
+        if (!::pusher.isInitialized || activePusher !== pusher) return@Runnable
+        if (pusher.connection.state == ConnectionState.DISCONNECTED) {
+            Log.d("Pusher", "Reconnecting (attempt ${pusherReconnectAttempt + 1})")
+            try {
+                pusher.connect()
+            } catch (e: Exception) {
+                Log.e("Pusher", "Reconnect failed", e)
+            }
+        }
+    }
+
+    private var lastSyncedAtMs = 0L
+    private var statusBanner: TextView? = null
+    private val bannerRefreshRunnable = Runnable { updateStatusBanner() }
+
+    private fun backoffMs(attempt: Int): Long =
+        (RETRY_BASE_MS shl attempt.coerceAtMost(4)).coerceAtMost(RETRY_MAX_MS)
+
+    private fun scheduleHomeRetry() {
+        val delay = backoffMs(homeRetryAttempt)
+        homeRetryAttempt++
+        Log.d("HomeLoad", "Home load failed, retrying in ${delay / 1000}s")
+        mainHandler.removeCallbacks(homeRetryRunnable)
+        mainHandler.postDelayed(homeRetryRunnable, delay)
+        updateStatusBanner()
+    }
+
+    /** Called after any successful load from the server. */
+    private fun markSynced() {
+        lastSyncedAtMs = System.currentTimeMillis()
+        updateStatusBanner()
+    }
+
+    private fun schedulePusherReconnect() {
+        val delay = backoffMs(pusherReconnectAttempt)
+        pusherReconnectAttempt++
+        mainHandler.removeCallbacks(pusherReconnectRunnable)
+        mainHandler.postDelayed(pusherReconnectRunnable, delay)
+    }
+
+    /** Pusher state changes arrive on Pusher's thread; this runs on the main thread. */
+    private fun onPusherStateChanged(state: ConnectionState) {
+        if (isFinishing || isDestroyed) return
+        when (state) {
+            ConnectionState.CONNECTED -> {
+                pusherConnected = true
+                pusherDownSinceMs = 0L
+                pusherReconnectAttempt = 0
+                mainHandler.removeCallbacks(pusherReconnectRunnable)
+            }
+            ConnectionState.DISCONNECTED -> {
+                markPusherDown()
+                // The client gives up after a few tries; keep trying while we're logged in
+                // (only if this is still the TV's own connection, not one being shut down).
+                if (activePusher === pusher && isLoggedIn()) schedulePusherReconnect()
+            }
+            else -> markPusherDown()
+        }
+        updateStatusBanner()
+    }
+
+    private fun markPusherDown() {
+        pusherConnected = false
+        if (pusherDownSinceMs == 0L) pusherDownSinceMs = System.currentTimeMillis()
+        // Re-check after the grace period, so a short reconnect doesn't flash the banner.
+        mainHandler.removeCallbacks(bannerRefreshRunnable)
+        mainHandler.postDelayed(bannerRefreshRunnable, PUSHER_BANNER_GRACE_MS + 500)
+    }
+
+    private fun registerNetworkCallback() {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        networkAvailable = cm.activeNetwork != null
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) {
+                mainHandler.post {
+                    val wasOffline = !networkAvailable
+                    networkAvailable = true
+                    updateStatusBanner()
+                    if (wasOffline) onNetworkRestored()
+                }
+            }
+
+            override fun onLost(network: android.net.Network) {
+                mainHandler.post {
+                    // Another network (e.g. Ethernet) may still be up.
+                    networkAvailable = cm.activeNetwork != null
+                    updateStatusBanner()
+                }
+            }
+        }
+        try {
+            cm.registerDefaultNetworkCallback(callback)
+            networkCallback = callback
+        } catch (e: Exception) {
+            Log.e("NETWORK", "registerDefaultNetworkCallback failed", e)
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        val callback = networkCallback ?: return
+        try {
+            (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
+                .unregisterNetworkCallback(callback)
+        } catch (e: Exception) {
+            Log.e("NETWORK", "unregisterNetworkCallback failed", e)
+        }
+        networkCallback = null
+    }
+
+    /** Network is back: reconnect live updates and reload whatever was missed. */
+    private fun onNetworkRestored() {
+        if (isFinishing || isDestroyed || !isLoggedIn()) return
+        Log.d("NETWORK", "Network restored, resyncing")
+        if (::pusher.isInitialized) {
+            // Skip the backoff wait: the network is back now.
+            mainHandler.removeCallbacks(pusherReconnectRunnable)
+            pusherReconnectAttempt = 0
+            try {
+                pusher.connect()
+            } catch (e: Exception) {
+                Log.e("Pusher", "Reconnect failed", e)
+            }
+        }
+        refreshBroadcastChannels()
+        if (!homeLoaded) {
+            homeRetryAttempt = 0
+            if (!homeLoadInFlight) type?.let { getHomeDetails(it) }
+        } else {
+            refreshListsFromServer()
+        }
+    }
+
+    private fun createStatusBanner() {
+        val banner = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            gravity = android.view.Gravity.CENTER
+            val pad = (8 * resources.displayMetrics.density).toInt()
+            setPadding(pad * 2, pad, pad * 2, pad)
+            setBackgroundColor(Color.parseColor("#E6B71C1C"))
+            visibility = View.GONE
+            isFocusable = false
+        }
+        // Overlay across the top so the token / video / ticker layout doesn't move.
+        addContentView(
+            banner,
+            android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                android.view.Gravity.TOP
+            )
+        )
+        statusBanner = banner
+    }
+
+    private fun updateStatusBanner() {
+        val banner = statusBanner ?: return
+        val pusherDownLong = !pusherConnected && pusherDownSinceMs != 0L &&
+                System.currentTimeMillis() - pusherDownSinceMs >= PUSHER_BANNER_GRACE_MS
+        val message = when {
+            !networkAvailable -> getString(R.string.status_offline)
+            !homeLoaded && !homeLoadInFlight && homeRetryAttempt > 0 -> getString(R.string.status_server_unreachable)
+            homeLoaded && pusherDownLong -> getString(R.string.status_live_reconnecting)
+            else -> null
+        }
+        if (message == null) {
+            banner.visibility = View.GONE
+            return
+        }
+        val lastUpdated = if (lastSyncedAtMs > 0L) {
+            " · " + getString(
+                R.string.status_last_updated,
+                SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(lastSyncedAtMs))
+            )
+        } else ""
+        banner.text = message + lastUpdated
+        banner.visibility = View.VISIBLE
+        banner.bringToFront()
     }
 
     private fun updateDoctorListPage() {
@@ -795,25 +877,25 @@ class HomeActivity1 : AppCompatActivity() {
 
         recyclerViewCounter?.isVisible = true
         btn_settings?.isVisible = false
-        recyclerViewCounter?.layoutManager = LinearLayoutManager(this@HomeActivity1)
-        recyclerViewCounter?.setHasFixedSize(true)
-        recyclerViewCounter?.isNestedScrollingEnabled = false
-        recyclerViewCounter?.setItemViewCacheSize(countersList.size.coerceAtLeast(4))
-        recyclerViewCounter?.setPadding(0, 0, 0, 0)
-        recyclerViewCounter?.clipToPadding = true
-        recyclerViewCounter?.clipChildren = true
-        recyclerViewCounter?.overScrollMode = View.OVER_SCROLL_NEVER
+        setUpCounterListOnce()
+        counterAdapter = recyclerViewCounter?.adapter as CounterAdapter
 
-        if (recyclerViewCounter?.adapter == null) {
-            counterAdapter = CounterAdapter(listOf()) { openCounterSetupScreen() }
-            recyclerViewCounter?.adapter = counterAdapter
-        } else {
-            counterAdapter = recyclerViewCounter?.adapter as CounterAdapter
+        val newPages = countersList.chunked(pagecounterSize)
+        // Stay on the page being shown; only fall back to page 1 if it no longer exists.
+        val page = if (counterCurrentPage in newPages.indices) counterCurrentPage else 0
+        val samePages = newPages.size == paginatedCounters.size
+        paginatedCounters = newPages
+        counterCurrentPage = page
+
+        if (samePages && counterAdapter.hasSameRows(newPages[page])) {
+            // Same counters as on screen: update only the numbers that changed. No re-layout,
+            // no page reset, page timer left running -> the screen doesn't jump.
+            counterAdapter.updateTokensInPlace(newPages[page])
+            return
         }
 
-        paginatedCounters = countersList.chunked(pagecounterSize)
-        counterCurrentPage = 0
-        counterAdapter.setCounters(paginatedCounters[counterCurrentPage])
+        // Counters added/removed/renamed (or first load): full redraw of the current page.
+        counterAdapter.setCounters(newPages[page])
         handler.removeCallbacks(counterPageRunnable)
         if (paginatedCounters.size > 1) {
             handler.postDelayed(counterPageRunnable, 15_000)
@@ -972,56 +1054,52 @@ class HomeActivity1 : AppCompatActivity() {
         })
     }
 
-    private fun getDoctorDetails(type: String) {
+    /**
+     * Reloads the doctor list from tvHome_new and updates it in place (no screen jump).
+     * [silent] is for background refreshes (events, reconnect, polling): no toasts, so an
+     * offline TV isn't covered in "Poor network connection" messages every minute.
+     */
+    private fun getDoctorDetails(type: String, silent: Boolean = false) {
         currentIndex = 0
+        doctorFetchInFlight = true
         val mAPIService = RetrofitClient.ApiUtils.apiService1
         mAPIService.getHome(type).enqueue(object : Callback<ResponseBody> {
             override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
+                doctorFetchInFlight = false
+                if (isFinishing || isDestroyed) return
                 if (response.isSuccessful) {
-                    doctorsList.clear()
-                    val responseFromServer = response.body()!!.string()
-                    val jsonObject = JSONObject(responseFromServer)
-                    val jObjData = jsonObject.getJSONObject("data")
-                    val jsonArrayDoctors = jObjData.getJSONArray("doctors")
+                    // A background refresh must never crash the TV on an odd response.
+                    try {
+                        val responseFromServer = response.body()!!.string()
+                        val jsonObject = JSONObject(responseFromServer)
+                        val jObjData = jsonObject.getJSONObject("data")
+                        val jsonArrayDoctors = jObjData.getJSONArray("doctors")
 
-                    if (jsonArrayDoctors.length() > 0) {
-                        for (k in 0 until jsonArrayDoctors.length()) {
-                            val jObjDoctor = jsonArrayDoctors.getJSONObject(k)
-                            val doctor_id = jObjDoctor.getString("doctor_id")
-                            val name = jObjDoctor.getString("name")
-                            val token_call_status = jObjDoctor.getString("call_status")
-                            val room = jObjDoctor.optString("room", "")
-                            val tkObject = jObjDoctor.optJSONObject("tk")
-                            var token = tkObject?.optString("token", "") ?: ""
-                            doctorsList.add(DoctorListingModel(doctor_id, name, room, token, "", token_call_status))
-                        }
+                        if (jsonArrayDoctors.length() > 0) {
+                            doctorsList.clear()
+                            for (k in 0 until jsonArrayDoctors.length()) {
+                                val jObjDoctor = jsonArrayDoctors.getJSONObject(k)
+                                val doctor_id = jObjDoctor.getString("doctor_id")
+                                val name = jObjDoctor.getString("name")
+                                val token_call_status = jObjDoctor.optString("call_status", "")
+                                val room = jObjDoctor.optString("room", "")
+                                val tkObject = jObjDoctor.optJSONObject("tk")
+                                var token = tkObject?.optString("token", "") ?: ""
+                                doctorsList.add(DoctorListingModel(doctor_id, name, room, token, "", token_call_status))
+                            }
 
-                        if (doctorsList.isNotEmpty()) {
-                            recyclerViewDoctor?.isVisible = true
-                            btn_settings?.isVisible = false
-                            recyclerViewDoctor?.layoutManager = LinearLayoutManager(this@HomeActivity1)
-
-                            if (recyclerViewDoctor?.adapter == null) {
-                                doctorAdapter = DoctorAdapter(listOf())
-                                recyclerViewDoctor?.adapter = doctorAdapter
+                            if (doctorsList.isNotEmpty()) {
+                                bindDoctorsToUi(resetPage = false)
                             } else {
-                                doctorAdapter = recyclerViewDoctor?.adapter as DoctorAdapter
+                                recyclerViewDoctor?.isVisible = false
+                                btn_settings?.isVisible = true
                             }
-
-                            paginatedDoctors = doctorsList.chunked(pageSize)
-
-                            if (paginatedDoctors.isNotEmpty()) {
-                                handler.removeCallbacks(doctorPageRunnable)
-                                if (currentPage >= paginatedDoctors.size) currentPage = 0
-                                doctorAdapter.setDoctors(paginatedDoctors[currentPage])
-                                handler.postDelayed(doctorPageRunnable, 15_000)
-                            }
-                        } else {
-                            recyclerViewDoctor?.isVisible = false
-                            btn_settings?.isVisible = true
                         }
+                        markSynced()
+                    } catch (e: Exception) {
+                        Log.e("DoctorRefresh", "Could not read doctor list", e)
                     }
-                } else {
+                } else if (!silent) {
                     when (response.code()) {
                         401 -> Toast.makeText(this@HomeActivity1, getString(R.string.unauthenticated), Toast.LENGTH_LONG).show()
                     }
@@ -1029,22 +1107,33 @@ class HomeActivity1 : AppCompatActivity() {
             }
 
             override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
+                doctorFetchInFlight = false
+                if (silent || isFinishing || isDestroyed) return
                 Toast.makeText(this@HomeActivity1, getString(R.string.response_failed), Toast.LENGTH_LONG).show()
             }
         })
     }
 
-    private fun getCountersDetails(type: String) {
+    /** Same as [getDoctorDetails], for the lab / pharmacy counters. */
+    private fun getCountersDetails(type: String, silent: Boolean = false) {
+        counterFetchInFlight = true
         val mAPIService = RetrofitClient.ApiUtils.apiService1
         mAPIService.getHome(type).enqueue(object : Callback<ResponseBody> {
             override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
+                counterFetchInFlight = false
+                if (isFinishing || isDestroyed) return
                 if (response.isSuccessful) {
-                    val responseFromServer = response.body()!!.string()
-                    val jsonObject = JSONObject(responseFromServer)
-                    val jObjData = jsonObject.getJSONObject("data")
-                    val jsonArray_counter_tokens = jObjData.getJSONArray("counter_tokens")
-                    bindCountersToUi(type, parseCounterTokens(jsonArray_counter_tokens))
-                } else {
+                    try {
+                        val responseFromServer = response.body()!!.string()
+                        val jsonObject = JSONObject(responseFromServer)
+                        val jObjData = jsonObject.getJSONObject("data")
+                        val jsonArray_counter_tokens = jObjData.getJSONArray("counter_tokens")
+                        bindCountersToUi(type, parseCounterTokens(jsonArray_counter_tokens))
+                        markSynced()
+                    } catch (e: Exception) {
+                        Log.e("CounterRefresh", "Could not read counter list", e)
+                    }
+                } else if (!silent) {
                     when (response.code()) {
                         401 -> Toast.makeText(this@HomeActivity1, getString(R.string.unauthenticated), Toast.LENGTH_LONG).show()
                     }
@@ -1052,9 +1141,83 @@ class HomeActivity1 : AppCompatActivity() {
             }
 
             override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
+                counterFetchInFlight = false
+                if (silent || isFinishing || isDestroyed) return
                 Toast.makeText(this@HomeActivity1, getString(R.string.response_failed), Toast.LENGTH_LONG).show()
             }
         })
+    }
+
+    // ---------------------------------------------------------------------
+    // Keeping the lists up to date without a manual refresh.
+    //  1. "doctor_list_refresh" events (doctor added / new booking) reload the doctor list.
+    //  2. When Pusher reconnects, the lists are reloaded (events sent while offline are lost).
+    //  3. A quiet poll every 60 s catches anything else that was missed.
+    // All three use the in-place update, so the screen doesn't jump.
+    // ---------------------------------------------------------------------
+
+    @Volatile private var pusherConnectedBefore = false
+    @Volatile private var doctorFetchInFlight = false
+    @Volatile private var counterFetchInFlight = false
+    private val doctorListRefreshRunnable = Runnable { type?.let { getDoctorDetails(it, silent = true) } }
+    private val listPollRunnable = object : Runnable {
+        override fun run() {
+            refreshListsFromServer()
+            mainHandler.postDelayed(this, LIST_POLL_MS)
+        }
+    }
+
+    /**
+     * Reload the doctor list shortly after a "doctor_list_refresh" event. Several events close
+     * together (a burst of bookings) cost one API call.
+     */
+    private fun scheduleDoctorListRefresh() {
+        if (type != "1" && type != "2") return
+        mainHandler.removeCallbacks(doctorListRefreshRunnable)
+        mainHandler.postDelayed(doctorListRefreshRunnable, DOCTOR_REFRESH_DEBOUNCE_MS)
+    }
+
+    private var pendingCounterRefreshType: String? = null
+    private val counterListRefreshRunnable = Runnable {
+        pendingCounterRefreshType?.let { getCountersDetails(it, silent = true) }
+        pendingCounterRefreshType = null
+    }
+
+    /**
+     * Reload the counters shortly after a "counter_refresh" event (or a call with no token).
+     * Several events close together cost one API call; no announcement is played.
+     * [refreshType] is "3" (lab) or "4" (pharmacy).
+     */
+    private fun scheduleCounterListRefresh(refreshType: String) {
+        pendingCounterRefreshType = refreshType
+        mainHandler.removeCallbacks(counterListRefreshRunnable)
+        mainHandler.postDelayed(counterListRefreshRunnable, COUNTER_REFRESH_DEBOUNCE_MS)
+    }
+
+    /** Quietly reloads this TV's list (doctors or counters). Skipped if a reload is already running. */
+    private fun refreshListsFromServer() {
+        if (isFinishing || isDestroyed || !isLoggedIn()) return
+        when (val currentType = type) {
+            "1", "2" -> if (!doctorFetchInFlight) getDoctorDetails(currentType, silent = true)
+            "3", "4" -> if (!counterFetchInFlight) getCountersDetails(currentType, silent = true)
+        }
+    }
+
+    private fun startListPolling() {
+        mainHandler.removeCallbacks(listPollRunnable)
+        mainHandler.postDelayed(listPollRunnable, LIST_POLL_MS)
+    }
+
+    private fun stopListPolling() {
+        mainHandler.removeCallbacks(listPollRunnable)
+    }
+
+    /** Pusher came back after a drop: rejoin channels and reload anything missed meanwhile. */
+    private fun onPusherReconnected() {
+        if (isFinishing || isDestroyed || !isLoggedIn()) return
+        Log.d("Pusher", "Reconnected, reloading lists")
+        refreshBroadcastChannels()
+        refreshListsFromServer()
     }
 
     /**
@@ -1071,10 +1234,14 @@ class HomeActivity1 : AppCompatActivity() {
         skipAnnouncement: Boolean = false,
         refreshType: String? = null
     ) {
+        val counterKnown = countersList.any { it.counter_id == counterId }
         updateCounterTokenOnUi(counterId, tokenNumber, bookingId)
 
-        if (!refreshType.isNullOrBlank()) {
-            getCountersDetails(refreshType)
+        // The event already carries the new number, which is now on screen. Reloading the whole
+        // list after every call redrew it (screen jump) and a slow response could roll the number
+        // back. Reload only when this counter isn't on the TV yet (e.g. newly enabled).
+        if (!counterKnown && !refreshType.isNullOrBlank()) {
+            getCountersDetails(refreshType, silent = true)
         }
 
         if (skipAnnouncement) return
@@ -1140,12 +1307,77 @@ class HomeActivity1 : AppCompatActivity() {
         }
     }
 
+    /**
+     * Sets up the counter list's layout manager and adapter the first time only. Replacing the
+     * layout manager on every refresh threw away and redrew every row, which made the screen jump.
+     */
+    private fun setUpCounterListOnce() {
+        val list = recyclerViewCounter ?: return
+        if (list.layoutManager == null) {
+            list.layoutManager = LinearLayoutManager(this@HomeActivity1)
+            list.setHasFixedSize(true)
+            list.isNestedScrollingEnabled = false
+            list.setPadding(0, 0, 0, 0)
+            list.clipToPadding = true
+            list.clipChildren = true
+            list.overScrollMode = View.OVER_SCROLL_NEVER
+            // No fade when a number changes: it should just change.
+            (list.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
+        }
+        list.setItemViewCacheSize(countersList.size.coerceAtLeast(4))
+        if (list.adapter == null) {
+            counterAdapter = CounterAdapter(listOf()) { openCounterSetupScreen() }
+            list.adapter = counterAdapter
+        }
+    }
+
+    /** Same as [setUpCounterListOnce], for the doctor list. */
+    private fun setUpDoctorListOnce() {
+        val list = recyclerViewDoctor ?: return
+        if (list.layoutManager == null) {
+            list.layoutManager = LinearLayoutManager(this@HomeActivity1)
+            (list.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
+        }
+        if (list.adapter == null) {
+            doctorAdapter = DoctorAdapter(listOf())
+            list.adapter = doctorAdapter
+        } else {
+            doctorAdapter = list.adapter as DoctorAdapter
+        }
+    }
+
+    /**
+     * Shows [doctorsList]. When the doctors on the current page are unchanged, only the
+     * token/room values that changed are redrawn, so a refresh doesn't make the screen jump.
+     * [resetPage] is for the first load, where the list starts on page 1.
+     */
+    private fun bindDoctorsToUi(resetPage: Boolean) {
+        recyclerViewDoctor?.isVisible = true
+        btn_settings?.isVisible = false
+        setUpDoctorListOnce()
+
+        val newPages = doctorsList.chunked(pageSize)
+        if (newPages.isEmpty()) return
+        val page = if (!resetPage && currentPage in newPages.indices) currentPage else 0
+        val samePages = newPages.size == paginatedDoctors.size
+        paginatedDoctors = newPages
+        currentPage = page
+
+        if (!resetPage && samePages && doctorAdapter.hasSameRows(newPages[page])) {
+            doctorAdapter.updateTokensInPlace(newPages[page])
+            return
+        }
+
+        handler.removeCallbacks(doctorPageRunnable)
+        doctorAdapter.setDoctors(newPages[page])
+        handler.postDelayed(doctorPageRunnable, 15_000)
+    }
+
     private fun ensureCounterAdapterReady() {
         if (recyclerViewCounter == null) return
         if (recyclerViewCounter?.adapter == null || !::counterAdapter.isInitialized) {
-            counterAdapter = CounterAdapter(listOf()) { openCounterSetupScreen() }
-            recyclerViewCounter?.layoutManager = LinearLayoutManager(this@HomeActivity1)
-            recyclerViewCounter?.adapter = counterAdapter
+            setUpCounterListOnce()
+            counterAdapter = recyclerViewCounter?.adapter as CounterAdapter
             if (paginatedCounters.isNotEmpty()) {
                 val page = counterCurrentPage.coerceIn(0, paginatedCounters.lastIndex)
                 counterAdapter.setCounters(paginatedCounters[page])
@@ -1188,7 +1420,12 @@ class HomeActivity1 : AppCompatActivity() {
             } catch (e: Exception) {
                 Log.e("Pusher", "Reconnect failed", e)
             }
+            // Picks up channel changes (new doctor, re-login) and retries any channel whose
+            // authorisation failed. Also runs right after onCreate, so it is the first fetch.
+            refreshBroadcastChannels()
         }
+        // Safety net for missed events: quietly reload the list every 60 s while on screen.
+        startListPolling()
         // Re-bind visible counter names after returning to the screen
         if (::counterAdapter.isInitialized &&
             paginatedCounters.isNotEmpty() &&
@@ -1234,6 +1471,14 @@ class HomeActivity1 : AppCompatActivity() {
             tts.stop()
             tts.shutdown()
         }
+        mainHandler.removeCallbacks(channelRetryRunnable)
+        mainHandler.removeCallbacks(doctorListRefreshRunnable)
+        mainHandler.removeCallbacks(counterListRefreshRunnable)
+        mainHandler.removeCallbacks(homeRetryRunnable)
+        mainHandler.removeCallbacks(pusherReconnectRunnable)
+        mainHandler.removeCallbacks(bannerRefreshRunnable)
+        unregisterNetworkCallback()
+        stopListPolling()
         disconnectOwnedPusher()
         if (activeSessionId == sessionId) {
             activeSessionId = 0L
@@ -1353,8 +1598,309 @@ class HomeActivity1 : AppCompatActivity() {
         return totalBytes
     }
 
+    // ---------------------------------------------------------------------
+    // Live token calls over private Pusher channels (bug report C2).
+    //
+    // The TV no longer listens on the public "medicino-tv-live" channel, which carried every
+    // customer's calls. It asks the backend which private channels it may join
+    // (GET tv/broadcastChannels, e.g. private-tv.clinic.2) and Pusher only lets it in after
+    // POST tv/broadcasting/auth approves the TV's bearer token for that channel.
+    // ---------------------------------------------------------------------
+
+    /** Private channels this TV has joined (or is joining). Main thread only. */
+    private val subscribedPrivateChannels = mutableSetOf<String>()
+    private var channelFetchInFlight = false
+    private val channelRetryRunnable = Runnable { refreshBroadcastChannels() }
+
+    private fun setUpPusher() {
+        val authorizer = HttpChannelAuthorizer(RetrofitClient.ApiUtils.BASE_URL + "tv/broadcasting/auth")
+        val options = PusherOptions()
+        options.setCluster(BuildConfig.PUSHER_CLUSTER)
+        // Read the token on every authorisation so a re-login never sends a stale bearer.
+        options.setChannelAuthorizer { channelName, socketId ->
+            authorizer.setHeaders(
+                hashMapOf(
+                    "Authorization" to "Bearer ${baseClass.getSharedPreferance(this@HomeActivity1, "token", "")}",
+                    "Accept" to "application/json"
+                )
+            )
+            authorizer.authorize(channelName, socketId)
+        }
+
+        // Key comes from the build flavor (staging / production) in app/build.gradle.
+        pusher = Pusher(BuildConfig.PUSHER_KEY, options)
+        activePusher = pusher
+
+        pusher.connect(object : ConnectionEventListener {
+            override fun onConnectionStateChange(change: ConnectionStateChange) {
+                Log.d("Pusher", "State changed from ${change.previousState} to ${change.currentState}")
+                mainHandler.post { onPusherStateChanged(change.currentState) }
+                if (change.currentState == ConnectionState.CONNECTED) {
+                    // The first connect is the normal start-up (lists load anyway). Any later
+                    // connect is a reconnect after a drop: reload what may have been missed.
+                    if (pusherConnectedBefore) {
+                        mainHandler.post { onPusherReconnected() }
+                    }
+                    pusherConnectedBefore = true
+                }
+            }
+
+            override fun onError(message: String?, code: String?, e: Exception?) {
+                Log.e("Pusher", "Error: $message, Code: $code, Exception: $e")
+            }
+        }, ConnectionState.ALL)
+        // Channels are joined in refreshBroadcastChannels(), which onResume runs.
+    }
+
+    /** Asks the backend which private channels this TV belongs to, then joins/leaves to match. */
+    private fun refreshBroadcastChannels() {
+        if (!::pusher.isInitialized || channelFetchInFlight || !isLoggedIn()) return
+        mainHandler.removeCallbacks(channelRetryRunnable)
+        channelFetchInFlight = true
+        RetrofitClient.ApiUtils.apiService1.getBroadcastChannels().enqueue(object : Callback<ResponseBody> {
+            override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
+                channelFetchInFlight = false
+                if (isFinishing || isDestroyed) return
+                val channels = if (response.isSuccessful) {
+                    try {
+                        parsePrivateChannels(response.body()?.string().orEmpty())
+                    } catch (e: Exception) {
+                        Log.e("Pusher", "Could not read broadcastChannels response", e)
+                        emptyList()
+                    }
+                } else {
+                    Log.e("Pusher", "broadcastChannels failed: HTTP ${response.code()}")
+                    emptyList()
+                }
+                applyChannelSubscriptions(channels)
+            }
+
+            override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
+                channelFetchInFlight = false
+                if (isFinishing || isDestroyed) return
+                Log.e("Pusher", "broadcastChannels request failed", t)
+                applyChannelSubscriptions(emptyList())
+            }
+        })
+    }
+
+    /**
+     * Expected: {"data": {"private_channels": ["private-tv.clinic.2", ...]}}. Also accepts
+     * data:[...], data:{channels:[...]} or a top-level list; entries may be strings or
+     * objects with "name"/"channel". Anything not starting with "private-" is dropped, so
+     * the TV can never be pointed back at a public channel.
+     */
+    private fun parsePrivateChannels(body: String): List<String> {
+        if (body.isBlank()) return emptyList()
+        val root = JSONObject(body)
+        val data = root.opt("data")
+        val array = when {
+            data is JSONArray -> data
+            data is JSONObject && data.optJSONArray("private_channels") != null -> data.optJSONArray("private_channels")
+            data is JSONObject && data.optJSONArray("channels") != null -> data.optJSONArray("channels")
+            else -> root.optJSONArray("private_channels") ?: root.optJSONArray("channels")
+        } ?: return emptyList()
+
+        val names = mutableListOf<String>()
+        for (i in 0 until array.length()) {
+            val name = when (val entry = array.opt(i)) {
+                is String -> entry
+                is JSONObject -> entry.optString("name").ifEmpty { entry.optString("channel") }
+                else -> ""
+            }.trim()
+            if (name.startsWith("private-")) names.add(name)
+        }
+        return names.distinct()
+    }
+
+    private fun applyChannelSubscriptions(privateChannels: List<String>) {
+        if (privateChannels.isEmpty()) {
+            // Keep channels already joined (a failed refresh shouldn't drop working ones) and
+            // ask again shortly. There is deliberately no fallback to the public channel.
+            scheduleChannelRetry()
+            return
+        }
+
+        // Leave channels the TV no longer belongs to (e.g. a doctor removed from the clinic).
+        for (name in subscribedPrivateChannels - privateChannels.toSet()) {
+            unsubscribeSafely(name)
+            subscribedPrivateChannels.remove(name)
+        }
+
+        for (name in privateChannels) {
+            if (name in subscribedPrivateChannels) continue
+            try {
+                pusher.subscribePrivate(name, object : PrivateChannelEventListener {
+                    override fun onEvent(event: PusherEvent) = dispatchPusherEvent(event)
+
+                    override fun onSubscriptionSucceeded(channelName: String) {
+                        Log.d("Pusher", "Subscribed to $channelName")
+                    }
+
+                    override fun onAuthenticationFailure(message: String?, e: Exception?) {
+                        // tv/broadcasting/auth refused or unreachable (expired token, blocked TV,
+                        // network). Drop the channel and try again on the next refresh.
+                        Log.e("Pusher", "Auth failed for $name: $message", e)
+                        runOnUiThread {
+                            if (isFinishing || isDestroyed) return@runOnUiThread
+                            if (subscribedPrivateChannels.remove(name)) unsubscribeSafely(name)
+                            scheduleChannelRetry()
+                        }
+                    }
+                }, *PUSHER_EVENTS)
+                subscribedPrivateChannels.add(name)
+                Log.d("Pusher", "Subscribing to $name")
+            } catch (e: Exception) {
+                Log.e("Pusher", "subscribePrivate($name) failed", e)
+            }
+        }
+    }
+
+    private fun scheduleChannelRetry() {
+        mainHandler.removeCallbacks(channelRetryRunnable)
+        mainHandler.postDelayed(channelRetryRunnable, CHANNEL_RETRY_MS)
+    }
+
+    private fun unsubscribeSafely(channelName: String) {
+        try {
+            pusher.unsubscribe(channelName)
+        } catch (e: Exception) {
+            Log.e("Pusher", "unsubscribe($channelName) failed", e)
+        }
+    }
+
+    private fun dispatchPusherEvent(event: PusherEvent) {
+        Log.d("PUSHER_DEBUG", "${event.eventName} on ${event.channelName}: ${event.data}")
+        runOnUiThread {
+            if (!shouldProcessPusherEvent()) return@runOnUiThread
+            // One malformed message must not crash every TV (bug report M6).
+            val jsonObject = try {
+                JSONObject(event.data)
+            } catch (e: Exception) {
+                Log.e("Pusher", "Bad ${event.eventName} payload: ${event.data}", e)
+                return@runOnUiThread
+            }
+            when (event.eventName) {
+                EVENT_TOKEN_CALLED -> handleTokenCalledEvent(jsonObject)
+                EVENT_OUTSOURCE_TOKEN_CALLED -> handleOutsourceTokenCalledEvent(jsonObject)
+            }
+        }
+    }
+
+    private fun isIdMatch(eventId: String, loggedId: String?): Boolean =
+        eventId.isNotEmpty() && eventId != "-1" && eventId != "null" &&
+                !loggedId.isNullOrBlank() && loggedId == eventId
+
+    private fun handleTokenCalledEvent(jsonObject: JSONObject) {
+        val tokenNumber = jsonObject.optString("token_number", "")
+        // Backend tags each event: "token_called" (a real call), "counter_refresh" or
+        // "doctor_list_refresh" (no token number). Only real calls may be announced. Events
+        // without a reason come from an older backend and are treated as before.
+        val reason = jsonObject.optString("reason", "")
+        val isRealCall = reason.isEmpty() || reason == REASON_TOKEN_CALLED
+        val hasToken = tokenNumber.isNotEmpty() && tokenNumber != "null"
+
+        // Clinic/Doctor: ID match → convertTextToSpeech
+        val doctorId = jsonObject.opt("doctor_id")?.toString()?.trim().orEmpty()
+        val clinicId = jsonObject.opt("clinic_id")?.toString()?.trim().orEmpty()
+        val roomNumber = jsonObject.optString("room_number", "")
+        val isClinicMatch = isIdMatch(clinicId, logged_clinic_id)
+        val isDoctorMatch = isIdMatch(doctorId, logged_doctor_id)
+
+        if (isClinicMatch || isDoctorMatch) {
+            if (reason == REASON_DOCTOR_LIST_REFRESH || !hasToken) {
+                // Doctor added / new booking: reload the doctor list. Nothing to announce.
+                scheduleDoctorListRefresh()
+                return
+            }
+            if (isRealCall) {
+                updateDoctorTokenOnUi(doctorId, tokenNumber, roomNumber)
+                convertTextToSpeech(tokenNumber, roomNumber, doctorId)
+                return
+            }
+        }
+
+        // Lab/Pharmacy: ID match → convertTokenTextToSpeech
+        val labId = jsonObject.opt("lab_id")?.toString()?.trim().orEmpty()
+        val pharmacyId = jsonObject.opt("pharmacy_id")?.toString()?.trim().orEmpty()
+        val counterId = jsonObject.opt("counter_id")?.toString()?.trim().orEmpty()
+        val bookingId = jsonObject.opt("counter_booking_id")?.toString()?.trim().orEmpty().ifEmpty { "0" }
+        val isLabMatch = isIdMatch(labId, logged_lab_id)
+        val isPharmacyMatch = isIdMatch(pharmacyId, logged_pharmacy_id)
+
+        val hasInvalidCounterFields = !hasToken || counterId.isEmpty() || counterId == "-1" || counterId == "null"
+        if (!isRealCall || hasInvalidCounterFields) {
+            // A counter refresh (or a call with no token): reload the counters, announce nothing.
+            if (isLabMatch) {
+                scheduleCounterListRefresh("3")
+            } else if (isPharmacyMatch) {
+                scheduleCounterListRefresh("4")
+            }
+            return
+        }
+
+        if (!isLabMatch && !isPharmacyMatch) return
+
+        handleCounterTokenCalled(
+            counterId = counterId,
+            tokenNumber = tokenNumber,
+            bookingId = bookingId,
+            announceOutsource = false,
+            refreshType = if (isLabMatch) "3" else "4"
+        )
+    }
+
+    private fun handleOutsourceTokenCalledEvent(jsonObject: JSONObject) {
+        val outsourceCallId = jsonObject.optString("outsource_call_id", "")
+        val counterId = jsonObject.opt("counter_id")?.toString()?.trim().orEmpty()
+        val tokenNumber = jsonObject.optString("token_number", "")
+        // Every outsource call is a real call (whatever its "reason"): announce it. Only an
+        // event missing the token or counter falls back to a quiet counter reload.
+
+        val labId = jsonObject.opt("lab_id")?.toString()?.trim().orEmpty()
+        val pharmacyId = jsonObject.opt("pharmacy_id")?.toString()?.trim().orEmpty()
+        val isLabMatch = isIdMatch(labId, logged_lab_id)
+        val isPharmacyMatch = isIdMatch(pharmacyId, logged_pharmacy_id)
+
+        val hasInvalidCounterFields = tokenNumber.isEmpty() || tokenNumber == "null" ||
+                counterId.isEmpty() || counterId == "-1" || counterId == "null"
+        if (hasInvalidCounterFields) {
+            if (isLabMatch) {
+                scheduleCounterListRefresh("3")
+            } else if (isPharmacyMatch) {
+                scheduleCounterListRefresh("4")
+            }
+            return
+        }
+
+        if (!isLabMatch && !isPharmacyMatch) {
+            Log.d("DEBUG_OUTSOURCE", "ID mismatch. Skipping.")
+            return
+        }
+
+        handleCounterTokenCalled(
+            counterId = counterId,
+            tokenNumber = tokenNumber,
+            bookingId = null,
+            announceOutsource = true,
+            outsourceCallId = outsourceCallId,
+            refreshType = if (isLabMatch) "3" else "4"
+        )
+    }
+
     companion object {
-        private const val PUSHER_CHANNEL = "medicino-tv-live"
+        private const val EVENT_TOKEN_CALLED = "token-called"
+        private const val EVENT_OUTSOURCE_TOKEN_CALLED = "outsource-token-called"
+        private val PUSHER_EVENTS = arrayOf(EVENT_TOKEN_CALLED, EVENT_OUTSOURCE_TOKEN_CALLED)
+        private const val REASON_TOKEN_CALLED = "token_called"
+        private const val REASON_DOCTOR_LIST_REFRESH = "doctor_list_refresh"
+        private const val DOCTOR_REFRESH_DEBOUNCE_MS = 1_500L
+        private const val COUNTER_REFRESH_DEBOUNCE_MS = 1_500L
+        private const val LIST_POLL_MS = 60_000L
+        private const val RETRY_BASE_MS = 5_000L
+        private const val RETRY_MAX_MS = 60_000L
+        private const val PUSHER_BANNER_GRACE_MS = 20_000L
+        private const val CHANNEL_RETRY_MS = 30_000L
 
         @Volatile
         private var activeSessionId: Long = 0L
@@ -1364,7 +1910,7 @@ class HomeActivity1 : AppCompatActivity() {
 
         private fun disconnectGlobalPusher() {
             try {
-                activePusher?.unsubscribe(PUSHER_CHANNEL)
+                // Disconnecting drops every channel this Pusher instance had joined.
                 activePusher?.disconnect()
             } catch (e: Exception) {
                 Log.e("Pusher", "Global disconnect failed", e)

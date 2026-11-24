@@ -39,6 +39,35 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    // Which backend + Pusher app the TV talks to. Pick the variant in Android Studio
+    // (Build > Select Build Variant): stagingDebug for testing, productionRelease for TVs.
+    // The two must always match: a TV on one Pusher app never sees the other's events,
+    // and private-channel auth is signed with that server's Pusher secret.
+    // Only the Pusher KEY belongs here; the secret stays on the backend.
+    flavorDimensions = ["env"]
+    productFlavors {
+        staging {
+            dimension "env"
+            isDefault = true
+            versionNameSuffix "-staging"
+            buildConfigField "String", "BASE_URL", '"https://staging.medicino.in/"'
+            buildConfigField "String", "VIDEO_URL", '"https://staging.medicino.in/storage/"'
+            buildConfigField "String", "PUSHER_KEY", '"e8a2220b4c88b31f047b"'
+            buildConfigField "String", "PUSHER_CLUSTER", '"ap2"'
+        }
+        production {
+            dimension "env"
+            buildConfigField "String", "BASE_URL", '"https://api.brightideainfotech.tech/"'
+            buildConfigField "String", "VIDEO_URL", '"https://api.brightideainfotech.tech/storage/"'
+            buildConfigField "String", "PUSHER_KEY", '"3ca5933d5ea7c2a5dd5c"'
+            buildConfigField "String", "PUSHER_CLUSTER", '"ap2"'
+        }
+    }
     namespace 'com.medicinoclinic'
 }
 

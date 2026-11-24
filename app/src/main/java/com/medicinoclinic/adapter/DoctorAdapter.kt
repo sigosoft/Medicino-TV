@@ -52,7 +52,9 @@ class DoctorAdapter(private var mList: List<DoctorListingModel>) : RecyclerView.
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int, payloads: MutableList<Any>) {
         if (payloads.contains(PAYLOAD_TOKEN)) {
-            bindTokenAndRoom(holder, mList[position])
+            // Only token/room changed: swap the text, nothing else. The auto-size set up on the
+            // full bind already fits the new value, so re-running it would make it jump.
+            setTokenAndRoomText(holder, mList[position])
             return
         }
         onBindViewHolder(holder, position)
@@ -87,14 +89,20 @@ class DoctorAdapter(private var mList: List<DoctorListingModel>) : RecyclerView.
     }
 
     private fun bindTokenAndRoom(holder: ViewHolder, doctor: DoctorListingModel) {
-        holder.tv_room.text = if (doctor.room == "null") "NA" else doctor.room
+        setTokenAndRoomText(holder, doctor)
+        fitLabeledValues(holder)
+    }
+
+    private fun setTokenAndRoomText(holder: ViewHolder, doctor: DoctorListingModel) {
+        val roomText = if (doctor.room == "null") "NA" else doctor.room
+        if (holder.tv_room.text?.toString() != roomText) holder.tv_room.text = roomText
         val tokenText = doctor.token.trim()
-        holder.tv_token.text = if (tokenText.isEmpty() || tokenText.equals("null", ignoreCase = true)) {
+        val displayToken = if (tokenText.isEmpty() || tokenText.equals("null", ignoreCase = true)) {
             "0"
         } else {
             tokenText
         }
-        fitLabeledValues(holder)
+        if (holder.tv_token.text?.toString() != displayToken) holder.tv_token.text = displayToken
     }
 
     private fun bindScrollingDoctorName(holder: ViewHolder, displayName: String, rawName: String) {
@@ -234,6 +242,27 @@ class DoctorAdapter(private var mList: List<DoctorListingModel>) : RecyclerView.
     fun setDoctors(newList: List<DoctorListingModel>) {
         mList = newList
         notifyDataSetChanged()
+    }
+
+    /** True when [newList] shows the same doctors, in the same order, with the same names. */
+    fun hasSameRows(newList: List<DoctorListingModel>): Boolean {
+        if (newList.size != mList.size) return false
+        return newList.indices.all { i ->
+            val a = mList[i]
+            val b = newList[i]
+            a.doctor_id == b.doctor_id && a.name == b.name && a.scroll_up == b.scroll_up
+        }
+    }
+
+    /** Silent refresh: same rows as [hasSameRows], so only redraw token/room values that changed. */
+    fun updateTokensInPlace(newList: List<DoctorListingModel>) {
+        val old = mList
+        mList = newList
+        for (i in newList.indices) {
+            if (old[i].token.trim() != newList[i].token.trim() || old[i].room.trim() != newList[i].room.trim()) {
+                notifyItemChanged(i, PAYLOAD_TOKEN)
+            }
+        }
     }
 
     fun updateTokenForDoctor(doctorId: String, newToken: String, newRoom: String? = null) {

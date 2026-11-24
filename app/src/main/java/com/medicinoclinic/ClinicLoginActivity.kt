@@ -15,6 +15,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Toast
+import com.medicinoclinic.utils.TvMessage
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.messaging.FirebaseMessaging
 import com.medicinoclinic.home.HomeActivity1
@@ -28,6 +29,8 @@ import retrofit2.Response
 
 class ClinicLoginActivity : AppCompatActivity() {
    var btn_login: Button? = null
+    /** QA-16: true while a login request is running, so repeat presses send nothing. */
+    private var loginInProgress = false
     var baseClass =  BaseClass()
     var  login_status: String? = "false"
     var clinicUserName: String? = ""
@@ -74,10 +77,7 @@ class ClinicLoginActivity : AppCompatActivity() {
         login_status = baseClass.getSharedPreferance(applicationContext,"login_status","false")
 
             if(login_status.equals("false")) {
-                clinicUserName = baseClass.getSharedPreferance(applicationContext,"clinicUsername","")
-                clinicPassword = baseClass.getSharedPreferance(applicationContext,"clinicPassword","")
-               edusername.setText(clinicUserName)
-                edPassword.setText(clinicPassword)
+                // QA-04: credentials are never stored or pre-filled; the user types them each time.
             }else{
                 val intent = Intent(this, HomeActivity1::class.java)
                 startActivity(intent)
@@ -89,25 +89,13 @@ class ClinicLoginActivity : AppCompatActivity() {
             val userName = edusername.text.toString()
             val password = edPassword.text.toString()
             if (userName.trim().isEmpty()) {
-                Toast.makeText(
-                    this@ClinicLoginActivity,
-                    getString(R.string.enter_username),
-                    Toast.LENGTH_LONG
-                ).show()
+                TvMessage.show(this@ClinicLoginActivity, getString(R.string.enter_username))
 
             } else if (password.trim().isEmpty()) {
-                Toast.makeText(
-                    this@ClinicLoginActivity,
-                    getString(R.string.enter_password),
-                    Toast.LENGTH_LONG
-                ).show()
+                TvMessage.show(this@ClinicLoginActivity, getString(R.string.enter_password))
 
             } else if (password.trim().length < 6) {
-                Toast.makeText(
-                    this@ClinicLoginActivity,
-                    getString(R.string.password_length),
-                    Toast.LENGTH_LONG
-                ).show()
+                TvMessage.show(this@ClinicLoginActivity, getString(R.string.password_length))
 
             }
             else {
@@ -152,6 +140,17 @@ class ClinicLoginActivity : AppCompatActivity() {
     }
 
     private fun getLogin(userName: String, password: String) {
+        // QA-20: with no network at all, say so straight away instead of waiting ~20 s for the
+        // request to time out and then showing "Poor network connection".
+        if (!TvMessage.isOnline(this)) {
+            TvMessage.show(this, getString(R.string.no_internet))
+            return
+        }
+        // QA-16: pressing Login again while waiting sent duplicate requests (and could open
+        // the token screen more than once). Ignore repeat presses until this one finishes.
+        if (loginInProgress) return
+        loginInProgress = true
+
 
         val progressDialog = ProgressDialog(this@ClinicLoginActivity, R.style.MyTheme)
         progressDialog.setProgressStyle(android.R.style.Widget_ProgressBar_Large)
@@ -164,6 +163,7 @@ class ClinicLoginActivity : AppCompatActivity() {
         mAPIService.login(userName, password,"1", fcm.toString()).enqueue(object : Callback<ResponseBody> {
 
             override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
+                loginInProgress = false
 
                 if (response.isSuccessful) {
                     progressDialog.dismiss()
@@ -175,8 +175,6 @@ class ClinicLoginActivity : AppCompatActivity() {
                         val clinicId = if (data.has("clinic_id")) data.opt("clinic_id").toString() else ""
                         baseClass.setSharedPreferance(applicationContext,"clinic_id",clinicId)
                         baseClass.setSharedPreferance(applicationContext,"type","1")
-                        baseClass.setSharedPreferance(applicationContext,"clinicUsername",userName)
-                        baseClass.setSharedPreferance(applicationContext,"clinicPassword",password)
                         RetrofitClient.bearer_token = data.getString("token")
 
                         baseClass.setSharedPreferance(applicationContext,"login_status","true")
@@ -185,7 +183,7 @@ class ClinicLoginActivity : AppCompatActivity() {
                         finishAffinity()
                     } catch (e: Exception) {
                         e.printStackTrace()
-                        Toast.makeText(this@ClinicLoginActivity, getString(R.string.invalid_credentials), Toast.LENGTH_LONG).show()
+                        TvMessage.show(this@ClinicLoginActivity, getString(R.string.invalid_credentials))
                     }
 
 
@@ -197,44 +195,45 @@ class ClinicLoginActivity : AppCompatActivity() {
 
                         if (response.code() == 400) {
                             val message: String = jsonObject.getString("message")
-                            Toast.makeText(this@ClinicLoginActivity, message, Toast.LENGTH_LONG).show()
+                            TvMessage.show(this@ClinicLoginActivity, message)
                         }
 
                         else if (response.code() == 422) {
                             val message: JSONObject = jsonObject.getJSONObject("message")
                             if (message.has("username")) {
                                 val username: String = message.getJSONArray("username").get(0).toString()
-                                Toast.makeText(this@ClinicLoginActivity, username, Toast.LENGTH_LONG).show()
+                                TvMessage.show(this@ClinicLoginActivity, username)
                             }else  if (message.has("password")) {
                                 val username: String = message.getJSONArray("password").get(0).toString()
-                                Toast.makeText(this@ClinicLoginActivity, username, Toast.LENGTH_LONG).show()
+                                TvMessage.show(this@ClinicLoginActivity, username)
                             }
                             else  if (message.has("email")) {
                                 val username: String = message.getJSONArray("email").get(0).toString()
-                                Toast.makeText(this@ClinicLoginActivity, username, Toast.LENGTH_LONG).show()
+                                TvMessage.show(this@ClinicLoginActivity, username)
                             }
                             else {
-                                Toast.makeText(this@ClinicLoginActivity, message.toString(), Toast.LENGTH_LONG).show()
+                                TvMessage.show(this@ClinicLoginActivity, message.toString())
                             }
 
                         } else if (response.code() == 500) {
-                            Toast.makeText(this@ClinicLoginActivity, getString(R.string.api_error), Toast.LENGTH_LONG).show()
+                            TvMessage.show(this@ClinicLoginActivity, getString(R.string.api_error))
                         } else {
-                            Toast.makeText(this@ClinicLoginActivity, getString(R.string.invalid_credentials), Toast.LENGTH_LONG).show()
+                            TvMessage.show(this@ClinicLoginActivity, getString(R.string.invalid_credentials))
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
                         if (response.code() == 500) {
-                            Toast.makeText(this@ClinicLoginActivity, getString(R.string.api_error), Toast.LENGTH_LONG).show()
+                            TvMessage.show(this@ClinicLoginActivity, getString(R.string.api_error))
                         } else {
-                            Toast.makeText(this@ClinicLoginActivity, getString(R.string.invalid_credentials), Toast.LENGTH_LONG).show()
+                            TvMessage.show(this@ClinicLoginActivity, getString(R.string.invalid_credentials))
                         }
                     }
                 }
             }
 
             override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
-                Toast.makeText(this@ClinicLoginActivity, getString(R.string.response_failed), Toast.LENGTH_LONG).show()
+                loginInProgress = false
+                TvMessage.show(this@ClinicLoginActivity, TvMessage.networkErrorText(this@ClinicLoginActivity, t))
                 progressDialog.dismiss()
             }
         })
