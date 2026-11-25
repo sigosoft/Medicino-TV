@@ -80,8 +80,7 @@ object RetrofitClient {
 //         val BASE_URL = "https://services.dev.medicinohealthtech.in/"
 //         val VIDEO_URL = "https://services.dev.medicinohealthtech.in/storage/"
 
-        // Set per build flavor in app/build.gradle: staging -> staging.medicino.in,
-        // production -> api.brightideainfotech.tech.
+        // Live server (api.brightideainfotech.tech), set in app/build.gradle (defaultConfig).
         val BASE_URL = BuildConfig.BASE_URL
         val VIDEO_URL = BuildConfig.VIDEO_URL
 

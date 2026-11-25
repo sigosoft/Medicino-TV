@@ -1695,7 +1695,7 @@ class HomeActivity1 : AppCompatActivity() {
             authorizer.authorize(channelName, socketId)
         }
 
-        // Key comes from the build flavor (staging / production) in app/build.gradle.
+        // Live Pusher key, set in app/build.gradle (defaultConfig).
         pusher = Pusher(BuildConfig.PUSHER_KEY, options)
         activePusher = pusher
 

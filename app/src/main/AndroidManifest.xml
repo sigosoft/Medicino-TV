@@ -114,7 +114,7 @@
 
         <!-- Sentry crash reporting -->
         <meta-data android:name="io.sentry.dsn" android:value="https://e48df5cd3614c0b034a9fd70a32e6bfc@o4512366604189696.ingest.us.sentry.io/4512367418802176" />
-        <!-- "production" while RetrofitClient/Pusher point at live; use "staging" for staging builds -->
+        <!-- The app talks to the live server, so crashes are reported as "production" -->
         <meta-data android:name="io.sentry.environment" android:value="production" />
         <!-- screenshots could show patient names/tokens on the TV -->
         <meta-data android:name="io.sentry.attach-screenshot" android:value="false" />
