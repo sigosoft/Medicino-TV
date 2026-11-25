@@ -66,6 +66,10 @@ import com.medicinoclinic.retrofit.APIService
 import com.medicinoclinic.utils.BaseClass
 import com.medicinoclinic.utils.ScrollTextView
 import com.medicinoclinic.utils.TokenAnnouncementQueue
+import com.medicinoclinic.utils.TvMessage
+import androidx.activity.OnBackPressedCallback
+import android.os.SystemClock
+import android.view.ViewGroup
 import com.smarteist.autoimageslider.SliderView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -187,6 +191,7 @@ class HomeActivity1 : AppCompatActivity() {
         mainHandler = Handler(Looper.getMainLooper())
         createStatusBanner()
         registerNetworkCallback()
+        setUpBackToExit()
         videoView = findViewById(R.id.videoView_ID)
         sliderView = findViewById(R.id.slider)
         lin_video = findViewById(R.id.lin_video)
@@ -553,6 +558,7 @@ class HomeActivity1 : AppCompatActivity() {
             override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
                 homeLoadInFlight = false
                 if (isFinishing || isDestroyed) return
+                markServerUnreachable()
                 // QA-07: a TV that starts before Wi-Fi is up used to stay blank forever. Show
                 // why on screen (banner) and keep retrying until the first load succeeds.
                 if (!homeLoaded) {
@@ -575,6 +581,8 @@ class HomeActivity1 : AppCompatActivity() {
 
     @Volatile private var homeLoaded = false
     @Volatile private var homeLoadInFlight = false
+    /** True after a server request failed, until the next successful load. */
+    @Volatile private var serverUnreachable = false
     private var homeRetryAttempt = 0
     private val homeRetryRunnable = Runnable {
         if (!homeLoaded && !homeLoadInFlight && isLoggedIn()) type?.let { getHomeDetails(it) }
@@ -618,6 +626,14 @@ class HomeActivity1 : AppCompatActivity() {
     /** Called after any successful load from the server. */
     private fun markSynced() {
         lastSyncedAtMs = System.currentTimeMillis()
+        serverUnreachable = false
+        updateStatusBanner()
+    }
+
+    /** A request to the server failed (no response at all): tell the banner (#15). */
+    private fun markServerUnreachable() {
+        if (isFinishing || isDestroyed) return
+        serverUnreachable = true
         updateStatusBanner()
     }
 
@@ -720,6 +736,30 @@ class HomeActivity1 : AppCompatActivity() {
         }
     }
 
+    /**
+     * Bug list #6: this is an unattended display, and one Back press on the remote closed it to
+     * the TV home screen. Now the first press only shows "Press Back again to exit"; a second
+     * press within [BACK_EXIT_WINDOW_MS] exits as before.
+     */
+    private fun setUpBackToExit() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val now = SystemClock.elapsedRealtime()
+                if (lastBackPressMs != 0L && now - lastBackPressMs <= BACK_EXIT_WINDOW_MS) {
+                    // Second press: let the system do its normal Back (leave the display).
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                    isEnabled = true
+                } else {
+                    lastBackPressMs = now
+                    TvMessage.show(this@HomeActivity1, getString(R.string.press_back_again_to_exit))
+                }
+            }
+        })
+    }
+
+    private var lastBackPressMs = 0L
+
     private fun createStatusBanner() {
         val banner = TextView(this).apply {
             setTextColor(Color.WHITE)
@@ -732,15 +772,31 @@ class HomeActivity1 : AppCompatActivity() {
             visibility = View.GONE
             isFocusable = false
         }
-        // Overlay across the top so the token / video / ticker layout doesn't move.
-        addContentView(
-            banner,
-            android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
-                android.view.Gravity.TOP
+        // Bug list #4: the banner used to be drawn over the top of the board and hid the Settings
+        // button and the first counter name. It now takes its own row at the top of the screen's
+        // vertical layout, so the board moves down while it shows and back up when it's hidden
+        // (GONE takes no space). The rest of the layout is weighted, so it shares what's left.
+        val root = findViewById<ViewGroup>(android.R.id.content).getChildAt(0) as? LinearLayout
+        if (root != null && root.orientation == LinearLayout.VERTICAL) {
+            root.addView(
+                banner,
+                0,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
             )
-        )
+        } else {
+            // Unexpected layout: fall back to an overlay rather than not showing it at all.
+            addContentView(
+                banner,
+                android.widget.FrameLayout.LayoutParams(
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                    android.view.Gravity.TOP
+                )
+            )
+        }
         statusBanner = banner
     }
 
@@ -748,9 +804,17 @@ class HomeActivity1 : AppCompatActivity() {
         val banner = statusBanner ?: return
         val pusherDownLong = !pusherConnected && pusherDownSinceMs != 0L &&
                 System.currentTimeMillis() - pusherDownSinceMs >= PUSHER_BANNER_GRACE_MS
+        // Bug list #15: each problem gets its own message, most serious first.
+        //  - TV has no network at all                     -> "No internet connection"
+        //  - network is up but the server can't be reached -> "Can't reach the server"
+        //    (the TV's Wi-Fi can be fine while the internet or server is down; detected from
+        //    failed loads, including the 60 s background refresh)
+        //  - server works, only the live (Pusher) link is down -> "Live updates are reconnecting"
+        val serverDown = serverUnreachable ||
+                (!homeLoaded && !homeLoadInFlight && homeRetryAttempt > 0)
         val message = when {
             !networkAvailable -> getString(R.string.status_offline)
-            !homeLoaded && !homeLoadInFlight && homeRetryAttempt > 0 -> getString(R.string.status_server_unreachable)
+            serverDown -> getString(R.string.status_server_unreachable)
             homeLoaded && pusherDownLong -> getString(R.string.status_live_reconnecting)
             else -> null
         }
@@ -766,7 +830,9 @@ class HomeActivity1 : AppCompatActivity() {
         } else ""
         banner.text = message + lastUpdated
         banner.visibility = View.VISIBLE
-        banner.bringToFront()
+        // Only for the overlay fallback: in the LinearLayout, bringToFront() would move the
+        // banner to the end of the list, i.e. the bottom of the screen.
+        if (banner.parent !is LinearLayout) banner.bringToFront()
     }
 
     private fun updateDoctorListPage() {
@@ -1108,6 +1174,7 @@ class HomeActivity1 : AppCompatActivity() {
 
             override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
                 doctorFetchInFlight = false
+                markServerUnreachable()
                 if (silent || isFinishing || isDestroyed) return
                 Toast.makeText(this@HomeActivity1, getString(R.string.response_failed), Toast.LENGTH_LONG).show()
             }
@@ -1142,6 +1209,7 @@ class HomeActivity1 : AppCompatActivity() {
 
             override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
                 counterFetchInFlight = false
+                markServerUnreachable()
                 if (silent || isFinishing || isDestroyed) return
                 Toast.makeText(this@HomeActivity1, getString(R.string.response_failed), Toast.LENGTH_LONG).show()
             }
@@ -1900,6 +1968,7 @@ class HomeActivity1 : AppCompatActivity() {
         private const val RETRY_BASE_MS = 5_000L
         private const val RETRY_MAX_MS = 60_000L
         private const val PUSHER_BANNER_GRACE_MS = 20_000L
+        private const val BACK_EXIT_WINDOW_MS = 3_000L
         private const val CHANNEL_RETRY_MS = 30_000L
 
         @Volatile

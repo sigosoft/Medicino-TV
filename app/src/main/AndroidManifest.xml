@@ -58,24 +58,28 @@
         <activity
             android:name=".ClinicLoginActivity"
             android:exported="true"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustPan"
             android:theme="@style/Theme.AppCompat.NoActionBar">
 
         </activity>
         <activity
             android:name=".DoctorLoginActivity"
             android:exported="true"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustPan"
             android:theme="@style/Theme.AppCompat.NoActionBar">
 
         </activity>
         <activity
             android:name=".PharmacyLoginActivity"
             android:exported="true"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustPan"
             android:theme="@style/Theme.AppCompat.NoActionBar">
 
         </activity>
         <activity
             android:name=".LabLoginActivity"
             android:exported="true"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustPan"
             android:theme="@style/Theme.AppCompat.NoActionBar">
 
         </activity>
